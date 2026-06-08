@@ -17,7 +17,7 @@ variable "backend_bucket" {
 
 variable "atlantis_chart_version" {
   type    = string
-  default = "5.20.2"
+  default = "6.5.1"
 }
 
 variable "atlantis_domain" {
