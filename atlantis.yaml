@@ -1,7 +1,7 @@
 version: 3
 projects:
   - name: s3-buckets-pf-sandbox-usw2
-    dir: s3-buckets/terraform
+    dir: modules/s3-buckets/terraform
     workspace: pf-sandbox-usw2
     autoplan:
       when_modified:
