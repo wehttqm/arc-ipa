@@ -5,7 +5,7 @@
 *.tfplan
 
 # Workspace tfvars (contain account IDs, ARNs, secret names)
-**/workspaces/
+# **/workspaces/
 
 # OS
 .DS_Store
