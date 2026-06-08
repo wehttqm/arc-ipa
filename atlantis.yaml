@@ -1,0 +1,23 @@
+version: 3
+projects:
+  - name: s3-buckets-pf-sandbox-usw2
+    dir: s3-buckets/terraform
+    workspace: pf-sandbox-usw2
+    autoplan:
+      when_modified:
+        - "**/*.tf"
+        - "workspaces/pf-sandbox-usw2.tfvars.json"
+      enabled: true
+    workflow: sandbox
+
+workflows:
+  sandbox:
+    plan:
+      steps:
+        - init
+        - plan:
+            extra_args:
+              - "-var-file=workspaces/pf-sandbox-usw2.tfvars.json"
+    apply:
+      steps:
+        - apply

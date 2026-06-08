@@ -8,18 +8,15 @@ terraform {
 
   backend "s3" {
     acl                  = "private"
-    bucket               = "arcteryx-ecomm-terraform-state"
+    bucket               = "arcteryx-pf-sandbox"
     encrypt              = true
     use_lockfile         = true
     key                  = "s3-buckets/terraform.tfstate"
     workspace_key_prefix = "terraform-state-backend"
     region               = "us-west-2"
   }
-  
 }
 
 provider "aws" {
-  region = "us-west-2"
+  region = var.region
 }
-
-
