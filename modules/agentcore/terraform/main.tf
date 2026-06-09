@@ -25,8 +25,6 @@ resource "aws_bedrockagentcore_agent_runtime" "this" {
   )
 
   depends_on = [
-    null_resource.trigger_build,
-    time_sleep.wait_for_image,
     aws_iam_role_policy.agent_execution,
     aws_iam_role_policy_attachment.agent_execution_managed
   ]
