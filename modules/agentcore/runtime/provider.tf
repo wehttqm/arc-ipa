@@ -13,8 +13,8 @@ terraform {
     bucket               = "arcteryx-pf-sandbox"
     encrypt              = true
     use_lockfile         = true
-    key                  = "agentcore/terraform.tfstate"
-    workspace_key_prefix = "terraform-state-backend"
+    key                  = "agentcore/runtime/terraform.tfstate"
+    workspace_key_prefix = "agentcore"
     region               = "us-west-2"
   }
 }

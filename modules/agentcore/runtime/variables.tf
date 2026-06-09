@@ -3,11 +3,6 @@ variable "region" {
   default = "us-west-2"
 }
 
-variable "environment" {
-  type    = string
-  default = "dev"
-}
-
 variable "stack_name" {
   type    = string
   default = "infra-agent"

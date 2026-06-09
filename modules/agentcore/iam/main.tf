@@ -1,3 +1,6 @@
+data "aws_caller_identity" "current" {}
+data "aws_region" "current" {}
+
 resource "aws_iam_role" "agent_execution" {
   name = "${var.stack_name}-agent-execution-role"
 
@@ -41,7 +44,7 @@ resource "aws_iam_role_policy" "agent_execution" {
           "ecr:GetDownloadUrlForLayer",
           "ecr:BatchCheckLayerAvailability"
         ]
-        Resource = aws_ecr_repository.agent.arn
+        Resource = var.repository_arn
       },
       {
         Sid      = "ECRTokenAccess"
@@ -67,6 +70,15 @@ resource "aws_iam_role_policy" "agent_execution" {
         Action = [
           "bedrock:InvokeModel",
           "bedrock:InvokeModelWithResponseStream"
+        ]
+        Resource = "*"
+      },
+      {
+        Sid    = "MarketplaceModelAccess"
+        Effect = "Allow"
+        Action = [
+          "aws-marketplace:ViewSubscriptions",
+          "aws-marketplace:Subscribe"
         ]
         Resource = "*"
       },
