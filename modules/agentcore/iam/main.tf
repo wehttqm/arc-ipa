@@ -94,6 +94,16 @@ resource "aws_iam_role_policy" "agent_execution" {
           "arn:aws:bedrock-agentcore:${data.aws_region.current.name}:${data.aws_caller_identity.current.id}:workload-identity-directory/default",
           "arn:aws:bedrock-agentcore:${data.aws_region.current.name}:${data.aws_caller_identity.current.id}:workload-identity-directory/default/workload-identity/*"
         ]
+      },
+      {
+        Sid    = "SecretsManagerAccess"
+        Effect = "Allow"
+        Action = [
+          "secretsmanager:GetSecretValue"
+        ]
+        Resource = [
+          "arn:aws:secretsmanager:${data.aws_region.current.name}:${data.aws_caller_identity.current.id}:secret:arc-ipa/*"
+        ]
       }
     ]
   })
