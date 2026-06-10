@@ -44,6 +44,7 @@ def stream_response(client, arn, session_id, prompt):
     )
 
     output = ""
+    current_tool = None
     with Live(Markdown(""), console=console, refresh_per_second=12, vertical_overflow="visible") as live:
         for line in response["response"].iter_lines():
             if not line:
@@ -65,7 +66,23 @@ def stream_response(client, arn, session_id, prompt):
                 live.stop()
                 console.print(f"\n[bold red]Error:[/] {event['error']}")
                 return None
-            delta = event.get("event", {}).get("contentBlockDelta", {}).get("delta", {})
+            inner = event.get("event", {})
+            # Tool use start
+            start = inner.get("contentBlockStart", {}).get("start", {})
+            if "toolUse" in start:
+                current_tool = start["toolUse"].get("name", "unknown")
+                if output:
+                    live.update(Markdown(output))
+                live.stop()
+                if output:
+                    console.print()
+                    output = ""
+                console.print(f"  [dim]⚙ {current_tool}[/dim]")
+                live.start()
+                live.update(Markdown(""))
+                continue
+            # Text delta
+            delta = inner.get("contentBlockDelta", {}).get("delta", {})
             chunk = delta.get("text", "")
             if chunk:
                 output += chunk
