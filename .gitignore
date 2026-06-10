@@ -11,3 +11,5 @@
 .DS_Store
 
 **/.venv
+
+**/.chat_history

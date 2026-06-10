@@ -29,13 +29,8 @@ def get_agent_arn():
     arn = os.environ.get("AGENT_RUNTIME_ARN")
     if arn:
         return arn
-    result = subprocess.run(
-        ["terraform", "output", "-raw", "agent_runtime_arn"],
-        capture_output=True, text=True, cwd=RUNTIME_TF_DIR,
-    )
-    if result.returncode == 0 and result.stdout.strip():
-        return result.stdout.strip()
-    sys.exit("Error: set AGENT_RUNTIME_ARN or ensure terraform state is accessible")
+    else:
+        sys.exit("Error: set AGENT_RUNTIME_ARN environment variable to your agent runtime ARN.")
 
 
 def stream_response(client, arn, session_id, prompt):
