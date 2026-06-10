@@ -2,11 +2,11 @@
 
 ## Overview
 
-Standards are the rules the agent enforces: how resources are named, what tags are required, and which accounts map to which environments. They live as JSON files in the IaC repo (`standards/` directory) so they're versioned, reviewable, and updatable via PR without redeploying the agent.
+Standards are the rules the agent enforces: how resources are named, what tags are required, and which accounts map to which environments. They live as JSON files in `arc-ipa-tf` (the `standards/` directory) so they're versioned, reviewable, and updatable via PR without redeploying the agent.
 
 ## How the Agent Reads Standards
 
-The agent's `validate_request` tool reads standards files via the `read_file` tool (GitHub Contents API). It always reads from the default branch — so standards take effect as soon as a PR updating them is merged.
+The agent's `validate_request` tool reads standards files from `arc-ipa-tf` via the `read_file` tool (GitHub Contents API). It always reads from the default branch — so standards take effect as soon as a PR updating them is merged.
 
 ```
 Developer request → validate_request tool → read_file("standards/naming.json")
@@ -104,7 +104,7 @@ The CLI `--account` flag must match a key in this file. If it doesn't, the agent
 
 ## Updating Standards
 
-1. Open a PR that modifies files in `standards/`
+1. Open a PR on `arc-ipa-tf` that modifies files in `standards/`
 2. Team reviews the change
 3. Merge to main
 4. Agent immediately reads the new standards on next request (no redeploy needed)

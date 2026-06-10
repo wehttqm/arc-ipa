@@ -34,7 +34,7 @@ You help developers provision cloud infrastructure by writing Terraform and open
 
 CONTEXT:
 - The target AWS account is provided in your session context. Never ask which account to use.
-- Standards (naming, tagging, account-mapping) are in the standards/ directory. Always read them via validate_request before writing Terraform.
+- Standards (naming, tagging, account-mapping) are in the standards/ directory of arc-ipa-tf. Always read them via validate_request before writing Terraform.
 - Security configuration (encryption, public access, versioning) is defined by standards. Do not ask the developer about these.
 
 WORKFLOW:
@@ -59,14 +59,14 @@ CONSTRAINTS:
 
 | Tool | Purpose | Backed By |
 |------|---------|-----------|
-| `validate_request` | Check request against standards before writing Terraform | Lambda → reads `standards/` via GitHub API |
-| `read_file` | Read any file in the IaC repo | Lambda → GitHub Contents API |
-| `write_file` | Create or update any file in the IaC repo | Lambda → GitHub Contents API |
-| `create_pull_request` | Commit changes to a branch and open a PR | Lambda → GitHub API |
+| `validate_request` | Check request against standards before writing Terraform | Lambda → reads `standards/` from `arc-ipa-tf` via GitHub API |
+| `read_file` | Read any file in `arc-ipa-tf` | Lambda → GitHub Contents API |
+| `write_file` | Create or update any file in `arc-ipa-tf` | Lambda → GitHub Contents API |
+| `create_pull_request` | Commit changes to a branch and open a PR on `arc-ipa-tf` | Lambda → GitHub API |
 | `comment_on_pr` | Post a comment on a PR (triggers Atlantis) | Lambda → GitHub Issues API |
 | `notify_approver` | Notify PFND engineer for protected environments | Lambda → Jira API |
 
-All GitHub operations go through the GitHub App's installation token — the tools don't hold their own credentials.
+All GitHub operations target `arc-ipa-tf` and go through the GitHub App's installation token — the tools don't hold their own credentials.
 
 ### Tool: `validate_request`
 
@@ -77,29 +77,29 @@ All GitHub operations go through the GitHub App's installation token — the too
 - account (from session context)
 
 **Behavior:**
-1. Reads `standards/naming.json` → validates name pattern
-2. Reads `standards/tagging.json` → confirms all required tags can be derived
-3. Reads `standards/account-mapping.json` → confirms account exists, resolves workspace
+1. Reads `standards/naming.json` from `arc-ipa-tf` → validates name pattern
+2. Reads `standards/tagging.json` from `arc-ipa-tf` → confirms all required tags can be derived
+3. Reads `standards/account-mapping.json` from `arc-ipa-tf` → confirms account exists, resolves workspace
 4. Returns pass/fail with specific errors
 
 ### Tool: `read_file`
 
 **Inputs:**
-- path (relative to repo root)
+- path (relative to `arc-ipa-tf` repo root)
 
 **Returns:** file contents as string
 
-Used by the agent to read existing Terraform before modifying it, or to read standards files.
+Used by the agent to read existing Terraform in `arc-ipa-tf` before modifying it, or to read standards files.
 
 ### Tool: `write_file`
 
 **Inputs:**
-- path (relative to repo root)
+- path (relative to `arc-ipa-tf` repo root)
 - content (full file contents)
 
 **Returns:** success/failure
 
-Used to create new `.tf` files or modify existing ones.
+Used to create new `.tf` files or modify existing ones in `arc-ipa-tf`.
 
 ### Tool: `create_pull_request`
 

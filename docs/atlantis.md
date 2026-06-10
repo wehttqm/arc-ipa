@@ -6,13 +6,23 @@ Atlantis is the existing Terraform execution layer. It runs `plan` and `apply` i
 
 ## Repo Structure
 
-The IaC repo that the agent writes to and Atlantis plans/applies from:
+There are two repos:
+
+- **`arc-ipa-tf`** — the Terraform that the agent reads/writes and Atlantis plans/applies. This is where provisioned infrastructure lives.
+- **`arc-ipa`** — the agent's own infrastructure (AgentCore runtime, IAM, ECR, Atlantis deployment), CLI, and docs.
+
+The agent operates on `arc-ipa-tf`:
 
 ```
-arcteryx-platform/infra-provisioning
-├── modules/                    (existing Terraform modules — agent calls these)
-├── environments/
-│   └── {account}/              (per-account Terraform configs)
+arc-ipa-tf/
+├── modules/                    (per-resource-type directories)
+│   └── s3-buckets/
+│       └── terraform/
+│           ├── main.tf
+│           ├── variables.tf
+│           ├── provider.tf
+│           └── workspaces/
+│               └── pf-sandbox-usw2.tfvars.json
 ├── standards/                  (validation rules as code)
 │   ├── naming.json
 │   ├── tagging.json
@@ -20,12 +30,11 @@ arcteryx-platform/infra-provisioning
 └── atlantis.yaml               (project config — maps dirs to workspaces)
 ```
 
-- `modules/` — existing Terraform modules. Agent reads these to understand patterns, inputs, and structure. Uses them as reference when writing new Terraform or modifying existing configs.
-- `environments/` — per-account configs (provider, backend, variables).
+- `modules/` — per-resource-type directories (e.g. `modules/s3-buckets/`), each containing a `terraform/` directory with configs and workspace-specific tfvars. The agent reads these to understand patterns and writes new Terraform here.
 - `standards/` — the agent reads these at runtime for validation. Updated via PR.
 - `atlantis.yaml` — defines project names, workspaces, and tfvars paths.
 
-The agent writes files into the same directories a human would — the PR (authored by the GitHub App) identifies it as agent-generated.
+The agent writes files into `arc-ipa-tf` the same way a human would — the PR (authored by the GitHub App) identifies it as agent-generated.
 
 ## Role in the System
 
@@ -51,7 +60,7 @@ Each managed resource type gets a project entry in `atlantis.yaml` at the repo r
 version: 3
 projects:
   - name: s3-buckets-pf-sandbox-usw2
-    dir: s3-buckets/terraform
+    dir: modules/s3-buckets/terraform
     workspace: pf-sandbox-usw2
     autoplan:
       when_modified:
@@ -143,16 +152,16 @@ Applied successfully for project: `s3-buckets-pf-sandbox-usw2`
 
 ## Atlantis Infrastructure
 
-Atlantis itself is deployed on EKS in the platform account. Its infrastructure (Helm chart, IRSA role, IAM policy) is managed in `atlantis/terraform/` in this repo.
+Atlantis itself is deployed on EKS in the platform account. Its infrastructure (Helm chart, IRSA role, IAM policy) is managed in `arc-ipa` under `modules/atlantis/terraform/`.
 
-The IRSA role (`pf-sandbox-platform-dev-atlantis-irsa`) determines what Atlantis can provision. Permissions must be added to `atlantis/terraform/iam-policy.json` before the agent can provision new resource types.
+The IRSA role (`pf-sandbox-platform-dev-atlantis-irsa`) determines what Atlantis can provision. Permissions must be added to `modules/atlantis/terraform/iam-policy.json` in `arc-ipa` before the agent can provision new resource types.
 
 ## Adding a New Resource Type
 
 To enable the agent to provision a new resource type via Atlantis:
 
-1. Add IAM permissions for the resource to `atlantis/terraform/iam-policy.json`
+1. Add IAM permissions for the resource to `modules/atlantis/terraform/iam-policy.json` in `arc-ipa`
 2. Apply the atlantis project (`atlantis plan/apply -p atlantis-pf-sandbox-usw2`)
-3. Add an `atlantis.yaml` project entry for the new resource type
-4. Update `standards/` with naming/tagging rules for the new type
+3. Add an `atlantis.yaml` project entry in `arc-ipa-tf` for the new resource type
+4. Update `standards/` in `arc-ipa-tf` with naming/tagging rules for the new type
 5. The agent can now provision it

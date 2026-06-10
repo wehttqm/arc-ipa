@@ -40,6 +40,13 @@ This creates bottlenecks, slows teams down, and consumes Platform Foundation eng
 - Platform Foundation engineers spend less time on routine provisioning and more time on complex/novel work
 - The agent handles the top 3-5 most common infrastructure request types
 
+### Repository Architecture
+
+| Repo | Purpose |
+|------|---------|
+| `arc-ipa` | Agent's own infrastructure (AgentCore runtime, IAM, ECR, Atlantis deployment), CLI, and documentation |
+| `arc-ipa-tf` | Terraform that the agent reads/writes — provisioned resources, standards, and `atlantis.yaml` |
+
 ---
 
 ## 2. User Stories
@@ -190,7 +197,7 @@ Acceptance Criteria:
 - Existing Terraform modules for S3, Lambda, API Gateway are stable and reusable
 - The team's Kubernetes namespace creation process can be codified
 - Preprod AWS accounts are safe to experiment in
-- Matthew has (or can get) access to the relevant GitHub repos and AWS accounts
+- Matthew has (or can get) access to `arc-ipa` (agent infra) and `arc-ipa-tf` (agent-managed Terraform) repos and AWS accounts
 
 ### What We Need from AWS (Ari's Team)
 
@@ -206,7 +213,6 @@ Acceptance Criteria:
 2. **Standards documentation** — formalized tagging, naming, and account rules (some exists already)
 3. **Preprod access** — IAM role for the agent with appropriate permissions
 4. **Feedback** — which provisioning requests are most common / most painful today?
-5. **Sponsor support** — Paul's backing for this as a KR4-3 pilot
 
 ---
 

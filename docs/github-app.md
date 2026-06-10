@@ -2,15 +2,15 @@
 
 ## Overview
 
-A GitHub App provides the agent's identity on GitHub and acts as the event bridge between Atlantis and AgentCore. It has two roles:
+A GitHub App provides the agent's identity on GitHub and acts as the event bridge between Atlantis and AgentCore. It is installed on `arc-ipa-tf` and has two roles:
 
-1. **Outbound:** All agent GitHub operations (branches, commits, PRs, comments) are performed as the app
-2. **Inbound:** Receives webhooks when Atlantis comments on PRs, and re-invokes the agent session with the result
+1. **Outbound:** All agent GitHub operations (branches, commits, PRs, comments) on `arc-ipa-tf` are performed as the app
+2. **Inbound:** Receives webhooks when Atlantis comments on `arc-ipa-tf` PRs, and re-invokes the agent session with the result
 
 ## Why a GitHub App
 
 - **Clean identity** — PRs and comments show as authored by the app (e.g., "infra-agent[bot]"), not a personal token
-- **Scoped permissions** — fine-grained access to specific repos, not org-wide
+- **Scoped permissions** — fine-grained access to `arc-ipa-tf`, not org-wide
 - **Webhooks built-in** — the app receives events without needing separate webhook config
 - **No shared secrets** — authenticates via private key + JWT, not a long-lived PAT
 
@@ -55,7 +55,7 @@ Lambda handler:
 
 ## Outbound Flow (Agent → GitHub)
 
-All agent tools (`read_file`, `write_file`, `create_pull_request`, `comment_on_pr`) authenticate as the GitHub App:
+All agent tools (`read_file`, `write_file`, `create_pull_request`, `comment_on_pr`) target `arc-ipa-tf` and authenticate as the GitHub App:
 
 ```
 Agent tool invoked
@@ -85,14 +85,14 @@ Recommendation: option 1 (PR description) is simplest and requires no extra infr
 |-----------|---------------|
 | Webhook receiver | Lambda + API Gateway (HTTPS endpoint) |
 | App credentials | Private key stored in Secrets Manager |
-| Deployment | Part of the agent's Terraform (in `atlantis/terraform/`) |
+| Deployment | Part of the agent's Terraform in `arc-ipa` |
 
 ## App Registration
 
 1. Create the app in the Arc'teryx GitHub org settings
 2. Set homepage URL, webhook URL (API Gateway endpoint)
 3. Generate and store private key in Secrets Manager
-4. Install the app on the IaC repo(s)
+4. Install the app on `arc-ipa-tf`
 
 ## Error Handling
 
