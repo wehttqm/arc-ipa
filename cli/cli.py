@@ -9,10 +9,12 @@ import uuid
 
 from prompt_toolkit import PromptSession
 from prompt_toolkit.history import FileHistory
-from rich.console import Console
+from rich.columns import Columns
+from rich.console import Console, Group
 from rich.live import Live
 from rich.markdown import Markdown
 from rich.panel import Panel
+from rich.text import Text
 from rich.theme import Theme
 
 REGION = "us-west-2"
@@ -80,6 +82,16 @@ def check_aws_credentials():
         sys.exit(1)
 
 
+LOGO_FILE = os.path.join(os.path.dirname(__file__), "static/deadbird-ascii.txt")
+
+
+def get_logo():
+    if os.path.isfile(LOGO_FILE):
+        with open(LOGO_FILE, "r") as f:
+            return Text.from_ansi(f.read().rstrip())
+    return Text("")
+
+
 def main():
     arn = get_agent_arn()
     check_aws_credentials()
@@ -87,11 +99,11 @@ def main():
     session_id = uuid.uuid4().hex + "0"  # 33 chars required
 
     console.clear()
-    console.print(Panel(
-        "[agent]Infra Agent[/] — interactive session\n"
-        "[dim]Type your message and press Enter. Ctrl+D or 'exit' to quit.[/dim]",
-        border_style="green",
-    ))
+    logo = get_logo()
+    label = Text.from_markup("\n[bold green]Arc'teryx Platform Agent[/] — interactive session\n"
+                             "[dim]Type your message and press Enter. Ctrl+D or 'exit' to quit.[/dim]")
+    content = Group(logo, label)
+    console.print(Panel(content, border_style="green"))
     console.print(f"[dim]session: {session_id[:8]}...[/dim]\n")
 
     prompt_session = PromptSession(
