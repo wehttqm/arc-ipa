@@ -4,7 +4,6 @@
 import boto3
 import json
 import os
-import subprocess
 import sys
 import uuid
 
@@ -30,7 +29,8 @@ def get_agent_arn():
     if arn:
         return arn
     else:
-        sys.exit("Error: set AGENT_RUNTIME_ARN environment variable to your agent runtime ARN.")
+        console.print("[bold red]Error:[/] Set [bold]AGENT_RUNTIME_ARN[/] environment variable to your agent runtime ARN.")
+        sys.exit(1)
 
 
 def stream_response(client, arn, session_id, prompt):
@@ -71,11 +71,22 @@ def stream_response(client, arn, session_id, prompt):
     return output
 
 
+def check_aws_credentials():
+    """Verify AWS credentials are available before starting the session."""
+    try:
+        boto3.client("sts", region_name=REGION).get_caller_identity()
+    except Exception:
+        console.print("[bold red]Error:[/] Not logged in to AWS. Run [bold]aws login[/] or configure credentials, then try again.")
+        sys.exit(1)
+
+
 def main():
     arn = get_agent_arn()
+    check_aws_credentials()
     client = boto3.client("bedrock-agentcore", region_name=REGION)
     session_id = uuid.uuid4().hex + "0"  # 33 chars required
 
+    console.clear()
     console.print(Panel(
         "[agent]Infra Agent[/] — interactive session\n"
         "[dim]Type your message and press Enter. Ctrl+D or 'exit' to quit.[/dim]",
