@@ -60,6 +60,7 @@ CONSTRAINTS:
 | Tool | Purpose | Backed By |
 |------|---------|-----------|
 | `validate_request` | Check request against standards before writing Terraform | Lambda → reads `standards/` from `arc-ipa-tf` via GitHub API |
+| `list_files` | List files and directories in `arc-ipa-tf` | Lambda → GitHub Contents API |
 | `read_file` | Read any file in `arc-ipa-tf` | Lambda → GitHub Contents API |
 | `write_file` | Create or update any file in `arc-ipa-tf` | Lambda → GitHub Contents API |
 | `create_pull_request` | Commit changes to a branch and open a PR on `arc-ipa-tf` | Lambda → GitHub API |
@@ -81,6 +82,16 @@ All GitHub operations target `arc-ipa-tf` and go through the GitHub App's instal
 2. Reads `standards/tagging.json` from `arc-ipa-tf` → confirms all required tags can be derived
 3. Reads `standards/account-mapping.json` from `arc-ipa-tf` → confirms account exists, resolves workspace
 4. Returns pass/fail with specific errors
+
+### Tool: `list_files`
+
+**Inputs:**
+- path (relative to `arc-ipa-tf` repo root, empty string for root)
+- ref (branch, defaults to main)
+
+**Returns:** list of files and directories at the given path
+
+Used by the agent to discover existing modules, explore repo structure, and understand what patterns are already in place before writing new Terraform.
 
 ### Tool: `read_file`
 
