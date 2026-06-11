@@ -20,6 +20,17 @@ data "terraform_remote_state" "ecr" {
   }
 }
 
+data "terraform_remote_state" "webhook_handler" {
+  backend   = "s3"
+  workspace = terraform.workspace
+  config = {
+    bucket               = "arcteryx-pf-sandbox"
+    key                  = "agentcore/webhook-handler/terraform.tfstate"
+    region               = "us-west-2"
+    workspace_key_prefix = "agentcore"
+  }
+}
+
 resource "aws_bedrockagentcore_agent_runtime" "this" {
   agent_runtime_name = replace("${var.stack_name}_${var.agent_name}", "-", "_")
   description        = var.description
@@ -39,6 +50,7 @@ resource "aws_bedrockagentcore_agent_runtime" "this" {
     {
       AWS_REGION         = var.region
       AWS_DEFAULT_REGION = var.region
+      SESSIONS_TABLE     = data.terraform_remote_state.webhook_handler.outputs.sessions_table_name
     },
     var.environment_variables
   )
