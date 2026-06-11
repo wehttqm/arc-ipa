@@ -8,9 +8,9 @@ variable "stack_name" {
   default = "infra-agent"
 }
 
-variable "agent_runtime_id" {
+variable "agent_runtime_arn" {
   type        = string
-  description = "AgentCore Runtime ID to invoke sessions on"
+  description = "AgentCore Runtime ARN to invoke sessions on"
 }
 
 variable "github_webhook_cidrs" {

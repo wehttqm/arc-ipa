@@ -8,7 +8,7 @@ import boto3
 
 SESSIONS_TABLE = os.environ["SESSIONS_TABLE"]
 SECRET_NAME = os.environ["SECRET_NAME"]
-AGENT_RUNTIME_ID = os.environ["AGENT_RUNTIME_ID"]
+AGENT_RUNTIME_ARN = os.environ["AGENT_RUNTIME_ARN"]
 
 dynamodb = boto3.resource("dynamodb")
 table = dynamodb.Table(SESSIONS_TABLE)
@@ -85,8 +85,8 @@ def handler(event, context):
 
     # Re-invoke the AgentCore session with the webhook payload
     agentcore.invoke_agent_runtime(
-        agentRuntimeId=AGENT_RUNTIME_ID,
-        sessionId=session_id,
+        agentRuntimeArn=AGENT_RUNTIME_ARN,
+        runtimeSessionId=session_id,
         payload=json.dumps({
             "webhook": {
                 "pr_number": pr_number,

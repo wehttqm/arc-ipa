@@ -44,7 +44,10 @@ resource "aws_iam_role_policy" "lambda" {
       {
         Effect   = "Allow"
         Action   = ["bedrock-agentcore:InvokeAgentRuntime"]
-        Resource = "arn:aws:bedrock-agentcore:${var.region}:*:runtime/${var.agent_runtime_id}"
+        Resource = [
+          var.agent_runtime_arn,
+          "${var.agent_runtime_arn}/*"
+        ]
       },
       {
         Effect   = "Allow"
@@ -77,7 +80,7 @@ resource "aws_lambda_function" "webhook" {
     variables = {
       SESSIONS_TABLE   = aws_dynamodb_table.sessions.name
       SECRET_NAME      = "arc-ipa/github-app"
-      AGENT_RUNTIME_ID = var.agent_runtime_id
+      AGENT_RUNTIME_ARN = var.agent_runtime_arn
       AWS_REGION_NAME  = var.region
     }
   }
