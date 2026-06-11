@@ -15,5 +15,6 @@ resource "aws_secretsmanager_secret" "github_app" {
 #     app_id          = ""
 #     private_key     = ""
 #     installation_id = ""
+#     webhook_secret  = ""
 #   })
 # }
