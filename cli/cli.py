@@ -1,13 +1,11 @@
 #!/usr/bin/env python3
-"""Interactive CLI for the AgentCore infrastructure agent."""
+"""Interactive CLI for the AgentCore infrastructure agent via WebSocket."""
 
-import boto3
+import asyncio
 import json
 import os
 import re
 import sys
-import termios
-import tty
 import uuid
 
 from prompt_toolkit import PromptSession
@@ -19,17 +17,19 @@ from rich.panel import Panel
 from rich.text import Text
 from rich.theme import Theme
 
+from bedrock_agentcore.runtime import AgentCoreRuntimeClient
+import websockets
+
 REGION = "us-west-2"
 HISTORY_DIR = os.path.join(os.path.dirname(__file__), ".chat_history")
 os.makedirs(HISTORY_DIR, exist_ok=True)
 
-# Regex to strip ANSI escapes, focus reports ([I/[O), bracketed paste, and CSI fragments
 _ANSI_RE = re.compile(
-    r"\x1b\[[\?0-9;]*[a-zA-Z~]"   # full CSI sequences (includes ?1004h, ?2004h, etc.)
-    r"|\x1b[()][A-Z0-9]"           # charset sequences
-    r"|\x1b\][\d;]*\x07"           # OSC sequences
-    r"|\[[\?]?\d*[a-zA-Z~]"        # broken/partial CSI without ESC (e.g. [I, [O, [0m, [?1004l)
-    r"|\[\d*;\d*[a-zA-Z]"          # e.g. [0;1m
+    r"\x1b\[[\?0-9;]*[a-zA-Z~]"
+    r"|\x1b[()][A-Z0-9]"
+    r"|\x1b\][\d;]*\x07"
+    r"|\[[\?]?\d*[a-zA-Z~]"
+    r"|\[\d*;\d*[a-zA-Z]"
 )
 
 theme = Theme({"user": "bold cyan", "agent": "bold green", "dim": "dim"})
@@ -37,7 +37,6 @@ console = Console(theme=theme)
 
 
 def strip_ansi(text: str) -> str:
-    """Remove ANSI escape codes and residual bracket sequences from text."""
     return _ANSI_RE.sub("", text)
 
 
@@ -49,165 +48,264 @@ def get_agent_arn():
     sys.exit(1)
 
 
-def stream_response(client, arn, session_id, prompt):
-    """Stream agent response, rendering text as markdown and tool calls as styled panels."""
-    response = client.invoke_agent_runtime(
-        agentRuntimeArn=arn,
-        qualifier="DEFAULT",
-        runtimeSessionId=session_id,
-        payload=json.dumps({"prompt": prompt}).encode(),
-    )
+def render_tool(name, args_str="", out=None):
+    out = out or console
+    summary = ""
+    if args_str:
+        try:
+            args = json.loads(args_str)
+            parts = []
+            for k, v in list(args.items())[:3]:
+                val = str(v) if not isinstance(v, str) else v
+                if len(val) > 40:
+                    val = val[:37] + "…"
+                parts.append(f"{k}={val}")
+            summary = " " + ", ".join(parts)
+        except (json.JSONDecodeError, ValueError):
+            pass
+    out.print(f"  [blue]▸[/blue] [bold]{name}[/bold][dim]{summary}[/dim]")
 
-    output = ""
-    tool_calls = []
-    current_tool = None
-    tool_input_buf = ""
 
-    def flush_text(live):
-        """Flush accumulated text to console and reset."""
-        nonlocal output
-        if output.strip():
-            live.update(Markdown(output))
-        return output
+_CLOSED = object()  # sentinel: WebSocket closed
 
-    def render_tool(name, args_str=""):
-        """Print a compact one-line tool call indicator with args summary."""
-        summary = ""
-        if args_str:
+
+class TurnRenderer:
+    """Renders the frames of a single agent turn (live markdown + tool lines).
+
+    State is per-turn; begin_turn() resets it. A turn may be user-initiated
+    (started after the user sends a prompt) or server-initiated (a webhook
+    resume, which opens with an `async_complete` frame).
+    """
+
+    def __init__(self, console):
+        self.console = console
+        self._reset()
+
+    def _reset(self):
+        self.output = ""
+        self.current_tool = None
+        self.tool_buf = ""
+        self.live = None
+
+    def _start_live(self):
+        self.live = Live(
+            Text(""), console=self.console, refresh_per_second=12, vertical_overflow="visible"
+        )
+        self.live.start()
+
+    def begin_turn(self):
+        self._reset()
+        self._start_live()
+
+    def _restart_live(self):
+        if self.live:
+            self.live.stop()
+        self.output = ""
+        self._start_live()
+
+    def banner(self, frame):
+        """Render the 'resuming…' banner for a server-initiated (webhook) turn."""
+        event_type = frame.get("event_type", "")
+        if self.live:
+            self.live.stop()
+        self.console.print(
+            f"\n[bold green]⟳[/bold green] [dim]Atlantis {event_type} result received, resuming…[/dim]\n"
+        )
+        self.output = ""
+        self._start_live()
+
+    def handle(self, inner):
+        """Render a single `stream` frame's data payload."""
+        if not isinstance(inner, dict):
+            return
+
+        if "force_stop" in inner:
+            if self.live:
+                self.live.stop()
+            self.console.print(f"\n[bold red]Error:[/] {inner.get('force_stop_reason', 'unknown')}")
+            self._restart_live()
+            return
+        if "error" in inner:
+            if self.live:
+                self.live.stop()
+            self.console.print(f"\n[bold red]Error:[/] {inner['error']}")
+            self._restart_live()
+            return
+
+        event_data = inner.get("event", {})
+
+        # Tool use start
+        start = event_data.get("contentBlockStart", {}).get("start", {})
+        if "toolUse" in start:
+            self.current_tool = start["toolUse"].get("name", "unknown")
+            self.tool_buf = ""
+            return
+
+        # Tool use end
+        if "contentBlockStop" in event_data and self.current_tool:
+            if self.output.strip():
+                self.live.update(Markdown(self.output))
+                self.live.stop()
+                self.console.print()
+                self.output = ""
+            elif self.live:
+                self.live.stop()
+            render_tool(self.current_tool, self.tool_buf, self.console)
+            self.current_tool = None
+            self.tool_buf = ""
+            self._start_live()
+            return
+
+        # Deltas
+        delta = event_data.get("contentBlockDelta", {}).get("delta", {})
+        tool_chunk = delta.get("toolUse", {}).get("input", "")
+        if tool_chunk and self.current_tool:
+            self.tool_buf += tool_chunk
+            return
+        chunk = delta.get("text", "")
+        if chunk:
+            self.output += strip_ansi(chunk)
+            self.live.update(Markdown(self.output))
+
+    def finish(self):
+        if self.output.strip() and self.live:
+            self.live.update(Markdown(self.output))
+        if self.live:
+            self.live.stop()
+        self._reset()
+
+
+async def _reader(ws, frame_q):
+    """Continuously read frames off the socket and queue them.
+
+    Decoupling the read from the send is what lets a server-initiated resumed
+    turn surface while the user is sitting idle at the prompt.
+    """
+    try:
+        async for raw in ws:
             try:
-                args = json.loads(args_str)
-                # Show first few meaningful key=value pairs
-                parts = []
-                for k, v in list(args.items())[:3]:
-                    val = str(v) if not isinstance(v, str) else v
-                    if len(val) > 40:
-                        val = val[:37] + "…"
-                    parts.append(f"{k}={val}")
-                summary = " " + ", ".join(parts)
-            except (json.JSONDecodeError, ValueError):
-                pass
-        console.print(f"  [blue]▸[/blue] [bold]{name}[/bold][dim]{summary}[/dim]")
-
-    live = Live(Text(""), console=console, refresh_per_second=12, vertical_overflow="visible")
-    # Disable focus/mouse reporting and flush any queued terminal responses
-    sys.stdout.write("\x1b[?1004l\x1b[?1003l\x1b[?1006l")
-    sys.stdout.flush()
-    # Suppress stdin echo during streaming so focus events don't print
-    try:
-        _old_attrs = termios.tcgetattr(sys.stdin)
-        _new_attrs = termios.tcgetattr(sys.stdin)
-        _new_attrs[3] &= ~termios.ECHO  # disable echo
-        termios.tcsetattr(sys.stdin, termios.TCSANOW, _new_attrs)
-        _restore_term = True
-    except (termios.error, ValueError):
-        _restore_term = False
-    live.start()
-
-    try:
-        for line in response["response"].iter_lines():
-            if not line:
+                frame = json.loads(raw) if isinstance(raw, str) else json.loads(raw.decode())
+            except (ValueError, TypeError):
                 continue
-            text = line.decode("utf-8")
-            if not text.startswith("data: "):
-                continue
-            try:
-                event = json.loads(text[6:])
-            except (json.JSONDecodeError, ValueError):
-                continue
-            if not isinstance(event, dict):
-                continue
-
-            # Error handling
-            if "force_stop" in event:
-                live.stop()
-                console.print(f"\n[bold red]Error:[/] {event.get('force_stop_reason', 'unknown')}")
-                return None
-            if "error" in event:
-                live.stop()
-                console.print(f"\n[bold red]Error:[/] {event['error']}")
-                return None
-
-            inner = event.get("event", {})
-
-            # Tool use start — just record the name, wait for input
-            start = inner.get("contentBlockStart", {}).get("start", {})
-            if "toolUse" in start:
-                current_tool = start["toolUse"].get("name", "unknown")
-                tool_input_buf = ""
-                continue
-
-            # Content block stop — if we were in a tool, render it now
-            if "contentBlockStop" in inner and current_tool:
-                tool_calls.append(current_tool)
-                if output.strip():
-                    live.update(Markdown(output))
-                    live.stop()
-                    console.print()
-                    output = ""
-                else:
-                    live.stop()
-                render_tool(current_tool, tool_input_buf)
-                current_tool = None
-                tool_input_buf = ""
-                live = Live(Text(""), console=console, refresh_per_second=12, vertical_overflow="visible")
-                live.start()
-                continue
-
-            # Text/tool input delta
-            delta = inner.get("contentBlockDelta", {}).get("delta", {})
-            # Tool input accumulation
-            tool_chunk = delta.get("toolUse", {}).get("input", "")
-            if tool_chunk and current_tool:
-                tool_input_buf += tool_chunk
-                continue
-            # Text delta
-            chunk = delta.get("text", "")
-            if chunk:
-                clean = strip_ansi(chunk)
-                output += clean
-                live.update(Markdown(output))
-    finally:
-        live.stop()
-        # Restore terminal echo
-        if _restore_term:
-            termios.tcsetattr(sys.stdin, termios.TCSANOW, _old_attrs)
-
-    # Print final output if anything remains that Live didn't render cleanly
-    # (Live already showed it, so we just return the value)
-    return output if output.strip() else None
-
-
-def check_aws_credentials():
-    """Verify AWS credentials are available before starting."""
-    try:
-        boto3.client("sts", region_name=REGION).get_caller_identity()
+            await frame_q.put(frame)
     except Exception:
-        console.print("[bold red]Error:[/] Not logged in to AWS. Run [bold]aws login[/] or configure credentials.")
-        sys.exit(1)
+        pass
+    finally:
+        await frame_q.put(_CLOSED)
 
 
-LOGO_FILE = os.path.join(os.path.dirname(__file__), "static/deadbird-ascii.txt")
+async def _render_turn(frame_q, renderer, first=None) -> bool:
+    """Render frames until `turn_complete`. Returns False if the socket closed."""
+    renderer.begin_turn()
+    frame = first
+    try:
+        while True:
+            if frame is None:
+                frame = await frame_q.get()
+            if frame is _CLOSED:
+                return False
+            ev = frame.get("event")
+            if ev == "turn_complete":
+                return True
+            if ev == "async_complete":
+                renderer.banner(frame)
+            elif ev == "stream":
+                renderer.handle(frame.get("data", {}))
+            frame = None
+    finally:
+        renderer.finish()
 
 
-def get_logo():
-    if os.path.isfile(LOGO_FILE):
-        with open(LOGO_FILE, "r") as f:
-            return Text.from_ansi(f.read().rstrip())
-    return Text("")
+async def _settle(task):
+    """Cancel-and-drain a task, swallowing the resulting CancelledError."""
+    if task.cancelled():
+        return
+    if not task.done():
+        task.cancel()
+    try:
+        await task
+    except BaseException:
+        pass
 
 
-def main():
+_EXIT_WORDS = ("exit", "quit", "/quit", "/exit")
+
+
+async def _interaction_loop(send, make_prompt, frame_q, renderer):
+    """Coordinate user input and server pushes over one connection.
+
+    Each iteration races the interactive prompt against the next incoming frame:
+      - If a frame arrives first, the server started a turn (a webhook resume).
+        Cancel the idle prompt and render the turn.
+      - If the user submits first, send the prompt and render the response turn.
+
+    A frame that races in just as the user submits is held over (`pending_frame`)
+    so it is never dropped.
+    """
+    pending_frame = None
+    while True:
+        # A server turn is already queued — render it before prompting again.
+        if pending_frame is not None:
+            first, pending_frame = pending_frame, None
+            if first is _CLOSED or not await _render_turn(frame_q, renderer, first):
+                return
+            continue
+
+        prompt_task = asyncio.ensure_future(make_prompt())
+        frame_task = asyncio.ensure_future(frame_q.get())
+        done, _ = await asyncio.wait(
+            {prompt_task, frame_task}, return_when=asyncio.FIRST_COMPLETED
+        )
+
+        # Server-initiated turn wins: preempt the prompt and render.
+        if frame_task in done:
+            await _settle(prompt_task)
+            first = frame_task.result()
+            if first is _CLOSED or not await _render_turn(frame_q, renderer, first):
+                return
+            continue
+
+        # User submitted. A frame may have raced in — hold it over, don't drop it.
+        if frame_task.done() and not frame_task.cancelled():
+            pending_frame = frame_task.result()
+        else:
+            await _settle(frame_task)
+
+        try:
+            user_input = (prompt_task.result() or "").strip()
+        except (EOFError, KeyboardInterrupt):
+            console.print("\n[dim]Goodbye.[/dim]")
+            return
+
+        if not user_input:
+            continue
+        if user_input.lower() in _EXIT_WORDS:
+            console.print("[dim]Goodbye.[/dim]")
+            return
+
+        console.print()
+        await send(json.dumps({"prompt": user_input}))
+        if not await _render_turn(frame_q, renderer, None):
+            return
+        console.print()
+
+
+async def run():
     arn = get_agent_arn()
-    check_aws_credentials()
-    client = boto3.client("bedrock-agentcore", region_name=REGION)
     session_id = uuid.uuid4().hex + "0"
 
-    # Disable terminal focus reporting globally to prevent [I/[O leaks
-    sys.stdout.write("\x1b[?1004l\x1b[?1003l")
-    sys.stdout.flush()
+    client = AgentCoreRuntimeClient(region=REGION)
+    ws_url, headers = client.generate_ws_connection(
+        runtime_arn=arn,
+        session_id=session_id,
+    )
 
     console.clear()
-    logo = get_logo()
+    LOGO_FILE = os.path.join(os.path.dirname(__file__), "static/deadbird-ascii.txt")
+    logo = Text("")
+    if os.path.isfile(LOGO_FILE):
+        with open(LOGO_FILE, "r") as f:
+            logo = Text.from_ansi(f.read().rstrip())
     label = Text.from_markup(
         "\n[bold green]Arc'teryx Platform Agent[/] — interactive session\n"
         "[dim]Type your message and press Enter. Ctrl+D or 'exit' to quit.[/dim]"
@@ -220,22 +318,29 @@ def main():
         enable_suspend=False,
     )
 
-    while True:
+    async with websockets.connect(ws_url, additional_headers=headers) as ws:
+        frame_q = asyncio.Queue()
+        reader_task = asyncio.ensure_future(_reader(ws, frame_q))
+        renderer = TurnRenderer(console)
+
+        async def send(text):
+            await ws.send(text)
+
+        async def make_prompt():
+            # prompt_async (not a worker thread) so a server-initiated turn can
+            # cancel the idle prompt to take over the terminal.
+            return await prompt_session.prompt_async("❯ ")
+
         try:
-            user_input = prompt_session.prompt("❯ ").strip()
-        except (EOFError, KeyboardInterrupt):
-            console.print("\n[dim]Goodbye.[/dim]")
-            break
+            await _interaction_loop(send, make_prompt, frame_q, renderer)
+        finally:
+            await _settle(reader_task)
 
-        if not user_input:
-            continue
-        if user_input.lower() in ("exit", "quit", "/quit", "/exit"):
-            console.print("[dim]Goodbye.[/dim]")
-            break
+    console.print("[dim]Goodbye.[/dim]")
 
-        console.print()
-        stream_response(client, arn, session_id, user_input)
-        console.print()
+
+def main():
+    asyncio.run(run())
 
 
 if __name__ == "__main__":
