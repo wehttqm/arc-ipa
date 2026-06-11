@@ -29,6 +29,11 @@ resource "aws_iam_role_policy_attachment" "agent_execution_managed" {
   policy_arn = "arn:aws:iam::aws:policy/BedrockAgentCoreFullAccess"
 }
 
+resource "aws_iam_role_policy_attachment" "agent_execution_readonly" {
+  role       = aws_iam_role.agent_execution.name
+  policy_arn = "arn:aws:iam::aws:policy/ReadOnlyAccess"
+}
+
 resource "aws_iam_role_policy" "agent_execution" {
   name = "AgentCoreExecutionPolicy"
   role = aws_iam_role.agent_execution.id
@@ -103,6 +108,16 @@ resource "aws_iam_role_policy" "agent_execution" {
         ]
         Resource = [
           "arn:aws:secretsmanager:${data.aws_region.current.name}:${data.aws_caller_identity.current.id}:secret:arc-ipa/*"
+        ]
+      },
+      {
+        Sid    = "DynamoDBSessionRegistration"
+        Effect = "Allow"
+        Action = [
+          "dynamodb:PutItem"
+        ]
+        Resource = [
+          "arn:aws:dynamodb:${data.aws_region.current.name}:${data.aws_caller_identity.current.id}:table/${var.stack_name}-webhook-sessions"
         ]
       }
     ]
