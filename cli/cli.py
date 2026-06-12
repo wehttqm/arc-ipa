@@ -9,8 +9,13 @@ import sys
 import uuid
 
 from prompt_toolkit import PromptSession
+from prompt_toolkit.application import Application
 from prompt_toolkit.formatted_text import FormattedText
 from prompt_toolkit.history import FileHistory
+from prompt_toolkit.key_binding import KeyBindings
+from prompt_toolkit.layout import Layout
+from prompt_toolkit.layout.containers import Window
+from prompt_toolkit.layout.controls import FormattedTextControl
 from prompt_toolkit.styles import Style
 from rich.console import Console, Group
 from rich.live import Live
@@ -73,6 +78,87 @@ def render_tool(name, args_str="", out=None):
     out.print(f"  [blue]▸[/blue] [bold]{name}[/bold][dim]{summary}[/dim]")
 
 
+# Matches an agent turn that ends by asking the user to confirm. We only look at
+# the last non-empty line, and require the question form (trailing "?"), so a
+# mid-sentence mention like "...get ready to proceed with step 1" won't trigger.
+_CONFIRM_RE = re.compile(r"ready to provision\s*\?\s*$", re.IGNORECASE)
+
+
+def needs_confirmation(text: str) -> bool:
+    lines = [ln.strip() for ln in text.strip().splitlines() if ln.strip()]
+    if not lines:
+        return False
+    # Strip common trailing markdown emphasis (*, _, `) before matching.
+    last = lines[-1].rstrip("*_`> ").strip()
+    return bool(_CONFIRM_RE.search(last))
+
+
+async def confirm_proceed() -> bool | None:
+    """Inline yes/no selector navigable with arrow keys.
+
+    Returns True for Yes, False for No, or None if the user cancels
+    (Ctrl-C / Ctrl-D).
+    """
+    selected = 0  # 0 = Yes, 1 = No
+
+    def get_fragments():
+        yes_cls = "class:selected" if selected == 0 else "class:option"
+        no_cls = "class:selected" if selected == 1 else "class:option"
+        return [
+            ("class:hint", "  ←/→ to choose, Enter to confirm   "),
+            (yes_cls, " Yes "),
+            ("", "  "),
+            (no_cls, " No "),
+        ]
+
+    kb = KeyBindings()
+
+    @kb.add("left")
+    @kb.add("up")
+    def _move_prev(event):
+        nonlocal selected
+        selected = (selected - 1) % 2
+
+    @kb.add("right")
+    @kb.add("down")
+    def _move_next(event):
+        nonlocal selected
+        selected = (selected + 1) % 2
+
+    @kb.add("enter")
+    def _accept(event):
+        event.app.exit(result=(selected == 0))
+
+    @kb.add("y")
+    def _yes(event):
+        event.app.exit(result=True)
+
+    @kb.add("n")
+    def _no(event):
+        event.app.exit(result=False)
+
+    @kb.add("c-c")
+    @kb.add("c-d")
+    def _cancel(event):
+        event.app.exit(result=None)
+
+    style = Style.from_dict(
+        {
+            "hint": "dim",
+            "option": "",
+            "selected": "reverse bold cyan",
+        }
+    )
+    app = Application(
+        layout=Layout(Window(FormattedTextControl(get_fragments, focusable=True), height=1)),
+        key_bindings=kb,
+        style=style,
+        full_screen=False,
+        mouse_support=False,
+    )
+    return await app.run_async()
+
+
 _CLOSED = object()  # sentinel: WebSocket closed
 
 
@@ -86,6 +172,7 @@ class TurnRenderer:
 
     def __init__(self, console):
         self.console = console
+        self.last_output = ""  # full text of the most recently completed turn
         self._reset()
 
     def _reset(self):
@@ -191,6 +278,7 @@ class TurnRenderer:
         if self.output.strip() and self.live:
             self.live.update(Markdown(self.output))
         self._stop_live()
+        self.last_output = self.output
         self._reset()
 
 
@@ -235,6 +323,31 @@ async def _render_turn(frame_q, renderer, first=None) -> bool:
         renderer.finish()
 
 
+async def _drive_turn(frame_q, renderer, send, first=None) -> bool:
+    """Render a turn and, if it ends by asking the user to confirm, present an
+    arrow-key yes/no selector and continue the conversation with the answer.
+
+    Loops so the agent can ask to confirm again after each reply. Returns False
+    if the socket closed.
+    """
+    while True:
+        if not await _render_turn(frame_q, renderer, first):
+            return False
+        first = None
+
+        if not needs_confirmation(renderer.last_output):
+            return True
+
+        answer = await confirm_proceed()
+        if answer is None:
+            console.print("[dim]Cancelled — type a message to continue.[/dim]")
+            return True
+
+        reply = "yes" if answer else "no"
+        console.print(f"  [cyan]❯[/cyan] [bold]{reply}[/bold]\n")
+        await send(json.dumps({"prompt": reply}))
+
+
 async def _settle(task):
     """Cancel-and-drain a task, swallowing the resulting CancelledError."""
     if task.cancelled():
@@ -266,7 +379,7 @@ async def _interaction_loop(send, make_prompt, frame_q, renderer):
         # A server turn is already queued — render it before prompting again.
         if pending_frame is not None:
             first, pending_frame = pending_frame, None
-            if first is _CLOSED or not await _render_turn(frame_q, renderer, first):
+            if first is _CLOSED or not await _drive_turn(frame_q, renderer, send, first):
                 return
             continue
 
@@ -280,7 +393,7 @@ async def _interaction_loop(send, make_prompt, frame_q, renderer):
         if frame_task in done:
             await _settle(prompt_task)
             first = frame_task.result()
-            if first is _CLOSED or not await _render_turn(frame_q, renderer, first):
+            if first is _CLOSED or not await _drive_turn(frame_q, renderer, send, first):
                 return
             continue
 
@@ -304,7 +417,7 @@ async def _interaction_loop(send, make_prompt, frame_q, renderer):
 
         console.print()
         await send(json.dumps({"prompt": user_input}))
-        if not await _render_turn(frame_q, renderer, None):
+        if not await _drive_turn(frame_q, renderer, send, None):
             return
         console.print()
 
