@@ -57,90 +57,9 @@ CONSTRAINTS:
 
 ## Tools
 
-| Tool | Purpose | Backed By |
-|------|---------|-----------|
-| `validate_request` | Check request against standards before writing Terraform | Lambda → reads `standards/` from `arc-ipa-tf` via GitHub API |
-| `list_files` | List files and directories in `arc-ipa-tf` | Lambda → GitHub Contents API |
-| `read_file` | Read any file in `arc-ipa-tf` | Lambda → GitHub Contents API |
-| `write_file` | Create or update any file in `arc-ipa-tf` | Lambda → GitHub Contents API |
-| `create_pull_request` | Commit changes to a branch and open a PR on `arc-ipa-tf` | Lambda → GitHub API |
-| `comment_on_pr` | Post a comment on a PR (triggers Atlantis) | Lambda → GitHub Issues API |
-| `notify_approver` | Notify PFND engineer for protected environments | Lambda → Jira API |
+See [tools.md](tools.md) for the full tool inventory and detailed specifications.
 
-All GitHub operations target `arc-ipa-tf` and go through the GitHub App's installation token — the tools don't hold their own credentials.
-
-### Tool: `validate_request`
-
-**Inputs:**
-- resource_type (e.g., `s3_bucket`, `k8s_namespace`)
-- team
-- purpose
-- account (from session context)
-
-**Behavior:**
-1. Reads `standards/naming.json` from `arc-ipa-tf` → validates name pattern
-2. Reads `standards/tagging.json` from `arc-ipa-tf` → confirms all required tags can be derived
-3. Reads `standards/account-mapping.json` from `arc-ipa-tf` → confirms account exists, resolves workspace
-4. Returns pass/fail with specific errors
-
-### Tool: `list_files`
-
-**Inputs:**
-- path (relative to `arc-ipa-tf` repo root, empty string for root)
-- ref (branch, defaults to main)
-
-**Returns:** list of files and directories at the given path
-
-Used by the agent to discover existing modules, explore repo structure, and understand what patterns are already in place before writing new Terraform.
-
-### Tool: `read_file`
-
-**Inputs:**
-- path (relative to `arc-ipa-tf` repo root)
-
-**Returns:** file contents as string
-
-Used by the agent to read existing Terraform in `arc-ipa-tf` before modifying it, or to read standards files.
-
-### Tool: `write_file`
-
-**Inputs:**
-- path (relative to `arc-ipa-tf` repo root)
-- content (full file contents)
-
-**Returns:** success/failure
-
-Used to create new `.tf` files or modify existing ones in `arc-ipa-tf`.
-
-### Tool: `create_pull_request`
-
-**Inputs:**
-- branch_name (auto-generated: `agent/{date}-{resource-type}-{team}-{purpose}`)
-- files (list of path + content pairs already written via `write_file`)
-- title
-- description (structured: who requested, what resource, validation results)
-
-**Returns:** PR number, PR URL
-
-### Tool: `comment_on_pr`
-
-**Inputs:**
-- pr_number
-- body (e.g., `atlantis plan -p s3-pf-sandbox-usw2`)
-
-**Returns:** comment ID
-
-Used to trigger Atlantis plan/apply after PR creation or after receiving webhook callback.
-
-### Tool: `notify_approver`
-
-**Inputs:**
-- pr_url
-- request_summary
-- requester
-- plan_output
-
-**Behavior:** Creates a Jira ticket in the PFND project with the request details and a link to the PR.
+See [adding-tools.md](adding-tools.md) for instructions on adding new tools.
 
 ## Session Lifecycle
 
