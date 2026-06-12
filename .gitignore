@@ -11,5 +11,5 @@
 .DS_Store
 
 **/.venv
-
+**/__pycache__
 **/.chat_history
