@@ -207,6 +207,8 @@ resource "helm_release" "atlantis" {
         ATLANTIS_PARALLEL_PLAN                            = "true"
         ATLANTIS_PARALLEL_APPLY                           = "false"
         TF_PLUGIN_CACHE_MAY_BREAK_DEPENDENCY_LOCK_FILE   = "true"
+        ATLANTIS_GH_ALLOW_MERGEABLE_BYPASS_APPLY        = "true"
+
       }
 
       resources = {
