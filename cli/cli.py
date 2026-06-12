@@ -2,8 +2,10 @@
 """Interactive CLI for the AgentCore infrastructure agent via WebSocket."""
 
 import asyncio
+import argparse
 import json
 import os
+import platform
 import re
 import sys
 import uuid
@@ -25,6 +27,7 @@ from rich.text import Text
 from rich.theme import Theme
 
 from bedrock_agentcore.runtime import AgentCoreRuntimeClient
+import psutil
 import websockets
 
 REGION = "us-west-2"
@@ -406,25 +409,28 @@ async def _interaction_loop(send, make_prompt, frame_q, renderer):
         try:
             user_input = (prompt_task.result() or "").strip()
         except (EOFError, KeyboardInterrupt):
-            console.print("\n[dim]Goodbye.[/dim]")
             return
 
         if not user_input:
             continue
         if user_input.lower() in _EXIT_WORDS:
-            console.print("[dim]Goodbye.[/dim]")
             return
 
         console.print()
         await send(json.dumps({"prompt": user_input}))
         if not await _drive_turn(frame_q, renderer, send, None):
-            return
+            return 
         console.print()
 
 
 async def run():
     arn = get_agent_arn()
-    session_id = uuid.uuid4().hex + "0"
+
+    parser = argparse.ArgumentParser(description="Arc'teryx Platform Agent CLI")
+    parser.add_argument("--resume", metavar="SESSION_ID", help="Resume a previous session")
+    args = parser.parse_args()
+
+    session_id = args.resume if args.resume else uuid.uuid4().hex + "0"
 
     client = AgentCoreRuntimeClient(region=REGION)
     ws_url, headers = client.generate_ws_connection(
@@ -443,7 +449,14 @@ async def run():
         "[dim]Type your message and press Enter. Ctrl+D or 'exit' to quit.[/dim]"
     )
     console.print(Panel(Group(logo, label), border_style="purple"))
-    console.print(f"[dim]session: {session_id[:8]}…[/dim]\n")
+    cpu_pct = psutil.cpu_percent(interval=0.1)
+    mem = psutil.virtual_memory()
+    console.print(
+        f"[dim]session: {session_id[:8]}…  |  "
+        f"{platform.system()} {platform.machine()}  |  "
+        f"cpu: {cpu_pct:.0f}%  |  "
+        f"mem: {mem.used // (1024**2)}MB/{mem.total // (1024**2)}MB ({mem.percent}%)[/dim]\n"
+    )
 
     prompt_session = PromptSession(
         history=FileHistory(os.path.join(HISTORY_DIR, "prompts")),
@@ -468,7 +481,8 @@ async def run():
         finally:
             await _settle(reader_task)
 
-    console.print("[dim]Goodbye.[/dim]")
+    console.print(f"[dim]To resume this session:[/dim]")
+    console.print(f"[bold cyan]  python cli.py --resume {session_id}[/bold cyan]\n")
 
 
 def main():
@@ -476,4 +490,7 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except KeyboardInterrupt:
+        console.print("\n[dim]Interrupted.[/dim]")
