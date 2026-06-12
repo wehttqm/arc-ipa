@@ -203,12 +203,20 @@ resource "helm_release" "atlantis" {
       }
 
       environment = {
-        AWS_REGION                                        = var.region
-        ATLANTIS_PARALLEL_PLAN                            = "true"
-        ATLANTIS_PARALLEL_APPLY                           = "false"
-        TF_PLUGIN_CACHE_MAY_BREAK_DEPENDENCY_LOCK_FILE   = "true"
-        ATLANTIS_GH_ALLOW_MERGEABLE_BYPASS_APPLY        = "true"
+        AWS_REGION                                     = var.region
+        ATLANTIS_PARALLEL_PLAN                         = "true"
+        ATLANTIS_PARALLEL_APPLY                        = "false"
+        TF_PLUGIN_CACHE_MAY_BREAK_DEPENDENCY_LOCK_FILE = "true"
+        ATLANTIS_GH_ALLOW_MERGEABLE_BYPASS_APPLY       = "true"
 
+        # Do NOT report a green commit status when a command matched zero
+        # projects. Without this, a PR that touches no discovered project gets
+        # `atlantis/plan|apply|policy_check — 0/0 ... successfully` (success),
+        # which satisfies the *required* branch-protection checks and lets the
+        # PR merge before any terraform runs. With this set, Atlantis withholds
+        # the status so the required checks stay unsatisfied and the merge is
+        # blocked until a real plan/apply reports. (runatlantis #1547/#1924)
+        ATLANTIS_SILENCE_VCS_STATUS_NO_PROJECTS = "true"
       }
 
       resources = {
@@ -228,17 +236,17 @@ resource "helm_release" "atlantis" {
         pathType         = "Prefix"
         annotations = merge(
           {
-            "alb.ingress.kubernetes.io/scheme"          = var.alb_scheme
-            "alb.ingress.kubernetes.io/target-type"     = "ip"
-            "alb.ingress.kubernetes.io/listen-ports"    = "[{\"HTTP\": 80}, {\"HTTPS\": 443}]"
-            "alb.ingress.kubernetes.io/security-groups" = aws_security_group.atlantis_alb.id
+            "alb.ingress.kubernetes.io/scheme"           = var.alb_scheme
+            "alb.ingress.kubernetes.io/target-type"      = "ip"
+            "alb.ingress.kubernetes.io/listen-ports"     = "[{\"HTTP\": 80}, {\"HTTPS\": 443}]"
+            "alb.ingress.kubernetes.io/security-groups"  = aws_security_group.atlantis_alb.id
             "alb.ingress.kubernetes.io/healthcheck-path" = "/healthz"
-            "alb.ingress.kubernetes.io/certificate-arn" = var.acm_certificate_arn
-            "alb.ingress.kubernetes.io/ssl-redirect"    = "443"
+            "alb.ingress.kubernetes.io/certificate-arn"  = var.acm_certificate_arn
+            "alb.ingress.kubernetes.io/ssl-redirect"     = "443"
           }
         )
         hosts = [{
-          host = var.atlantis_domain
+          host  = var.atlantis_domain
           paths = ["/"]
         }]
       }
