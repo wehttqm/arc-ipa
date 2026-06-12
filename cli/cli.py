@@ -34,13 +34,13 @@ _ANSI_RE = re.compile(
     r"|\[\d*;\d*[a-zA-Z]"
 )
 
-theme = Theme({"user": "bold cyan", "agent": "bold green", "dim": "dim"})
+theme = Theme({"user": "bold cyan", "agent": "bold purple", "dim": "dim"})
 console = Console(theme=theme)
 
-# A thick, bold-cyan bar with a blank line of padding above it, so the user's
+# A thick, bold-light green bar with a blank line of padding above it, so the user's
 # input line clearly stands apart from the agent's `▸` tool lines above it.
 PROMPT_STYLE = Style.from_dict({"pad": "", "bar": "bold cyan"})
-PROMPT_MESSAGE = FormattedText([("class:pad", "\n"), ("class:bar", "┃ ")])
+PROMPT_MESSAGE = FormattedText([("class:pad", "\n"), ("class:bar", "❯❯ ")])
 
 
 def strip_ansi(text: str) -> str:
@@ -125,7 +125,7 @@ class TurnRenderer:
         event_type = frame.get("event_type", "")
         self._stop_live()
         self.console.print(
-            f"\n[bold green]⟳[/bold green] [dim]Atlantis {event_type} result received, resuming…[/dim]\n"
+            f"\n[bold purple]⟳[/bold purple] [dim]Atlantis {event_type} result received, resuming…[/dim]\n"
         )
         self.output = ""
         self._need_gap = False
@@ -326,10 +326,10 @@ async def run():
         with open(LOGO_FILE, "r") as f:
             logo = Text.from_ansi(f.read().rstrip())
     label = Text.from_markup(
-        "\n[bold green]Arc'teryx Platform Agent[/] — interactive session\n"
+        "\n[bold purple]Arc'teryx Platform Agent[/] — interactive session\n"
         "[dim]Type your message and press Enter. Ctrl+D or 'exit' to quit.[/dim]"
     )
-    console.print(Panel(Group(logo, label), border_style="green"))
+    console.print(Panel(Group(logo, label), border_style="purple"))
     console.print(f"[dim]session: {session_id[:8]}…[/dim]\n")
 
     prompt_session = PromptSession(
