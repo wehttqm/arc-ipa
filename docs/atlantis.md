@@ -47,10 +47,11 @@ The agent writes files into `arc-ipa-tf` the same way a human would — the PR (
 
 | Step | Agent Action | Atlantis Response |
 |------|-------------|-------------------|
-| 1 | Opens a PR with Terraform changes | Auto-plans (if `autoplan` enabled) or waits for comment |
-| 2 | Comments `atlantis plan -p <project>` | Runs `terraform plan`, posts output as PR comment |
-| 3 | Reads Atlantis plan comment (via webhook) | — |
-| 4 | Comments `atlantis apply -p <project>` | Runs `terraform apply`, posts result as PR comment |
+| 1 | Opens a PR with Terraform changes | Atlantis auto-plans all affected projects (posts plan output as PR comment) |
+| 2 | Reads Atlantis plan comment (via webhook) | — |
+| 3 | Comments `atlantis apply -p <project>` | Runs `terraform apply`, posts result as PR comment |
+
+**Important:** The agent must NOT comment `atlantis plan` immediately after opening a PR. Autoplan is enabled — Atlantis will detect the changed files and plan automatically. Commenting plan manually would trigger a duplicate run. The agent should only comment `atlantis plan -p <project>` if it needs to re-plan (e.g., after pushing additional commits or if the initial autoplan failed).
 
 ## Project Configuration (`atlantis.yaml`)
 

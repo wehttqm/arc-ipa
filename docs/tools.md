@@ -18,6 +18,7 @@ For instructions on adding new tools, see [adding-tools.md](adding-tools.md).
 | `comment_on_pr` | Post a comment on a PR (triggers Atlantis) | GitHub Issues API |
 | `read_pr_comments` | Read comments on a PR | GitHub Issues API |
 | `list_pull_requests` | List PRs with optional filters | GitHub API |
+| `list_commits` | View commit history, optionally filtered by file | GitHub API |
 | `wait_for_atlantis` | Wait for Atlantis plan/apply to complete | Async task + webhook |
 | `get_mcp_tools` | Load MCP-based integrations (Jira) | MCP over Streamable HTTP |
 
@@ -109,6 +110,15 @@ For instructions on adding new tools, see [adding-tools.md](adding-tools.md).
 - `state` — `open`, `closed`, or `all` (defaults to open)
 
 **Returns:** List of PRs matching the filter.
+
+### `list_commits`
+
+**Inputs:**
+- `path` — file path to filter commits for (empty for all commits)
+- `branch` — branch to list from (defaults to main)
+- `limit` — number of commits to return (defaults to 10)
+
+**Returns:** Formatted list of commits with SHA, date, author, and message.
 
 ### `wait_for_atlantis`
 
