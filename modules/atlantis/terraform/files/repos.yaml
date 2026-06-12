@@ -4,4 +4,4 @@ repos:
     allowed_overrides: [workflow, apply_requirements]
     allow_custom_workflows: true
     autodiscover:
-      mode: auto
+      mode: disabled
