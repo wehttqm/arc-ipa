@@ -208,15 +208,6 @@ resource "helm_release" "atlantis" {
         ATLANTIS_PARALLEL_APPLY                        = "false"
         TF_PLUGIN_CACHE_MAY_BREAK_DEPENDENCY_LOCK_FILE = "true"
         ATLANTIS_GH_ALLOW_MERGEABLE_BYPASS_APPLY       = "true"
-
-        # Do NOT report a green commit status when a command matched zero
-        # projects. Without this, a PR that touches no discovered project gets
-        # `atlantis/plan|apply|policy_check — 0/0 ... successfully` (success),
-        # which satisfies the *required* branch-protection checks and lets the
-        # PR merge before any terraform runs. With this set, Atlantis withholds
-        # the status so the required checks stay unsatisfied and the merge is
-        # blocked until a real plan/apply reports. (runatlantis #1547/#1924)
-        ATLANTIS_SILENCE_VCS_STATUS_NO_PROJECTS = "true"
       }
 
       resources = {
