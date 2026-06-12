@@ -9,7 +9,9 @@ import sys
 import uuid
 
 from prompt_toolkit import PromptSession
+from prompt_toolkit.formatted_text import FormattedText
 from prompt_toolkit.history import FileHistory
+from prompt_toolkit.styles import Style
 from rich.console import Console, Group
 from rich.live import Live
 from rich.markdown import Markdown
@@ -34,6 +36,11 @@ _ANSI_RE = re.compile(
 
 theme = Theme({"user": "bold cyan", "agent": "bold green", "dim": "dim"})
 console = Console(theme=theme)
+
+# A thick, bold-cyan bar with a blank line of padding above it, so the user's
+# input line clearly stands apart from the agent's `▸` tool lines above it.
+PROMPT_STYLE = Style.from_dict({"pad": "", "bar": "bold cyan"})
+PROMPT_MESSAGE = FormattedText([("class:pad", "\n"), ("class:bar", "┃ ")])
 
 
 def strip_ansi(text: str) -> str:
@@ -86,33 +93,42 @@ class TurnRenderer:
         self.current_tool = None
         self.tool_buf = ""
         self.live = None
+        self._need_gap = False  # set after a tool line; gap before next text block
 
-    def _start_live(self):
+    def _ensure_live(self):
+        """Lazily start the live region on the first text chunk.
+
+        Starting lazily (instead of holding an empty Live between tool calls)
+        avoids the stray blank line each idle Live used to leave behind, and
+        lets us insert a single blank line after a run of tool calls.
+        """
+        if self.live is not None:
+            return
+        if self._need_gap:
+            self.console.print()
+            self._need_gap = False
         self.live = Live(
             Text(""), console=self.console, refresh_per_second=12, vertical_overflow="visible"
         )
         self.live.start()
 
-    def begin_turn(self):
-        self._reset()
-        self._start_live()
-
-    def _restart_live(self):
+    def _stop_live(self):
         if self.live:
             self.live.stop()
-        self.output = ""
-        self._start_live()
+            self.live = None
+
+    def begin_turn(self):
+        self._reset()
 
     def banner(self, frame):
         """Render the 'resuming…' banner for a server-initiated (webhook) turn."""
         event_type = frame.get("event_type", "")
-        if self.live:
-            self.live.stop()
+        self._stop_live()
         self.console.print(
             f"\n[bold green]⟳[/bold green] [dim]Atlantis {event_type} result received, resuming…[/dim]\n"
         )
         self.output = ""
-        self._start_live()
+        self._need_gap = False
 
     def handle(self, inner):
         """Render a single `stream` frame's data payload."""
@@ -120,16 +136,16 @@ class TurnRenderer:
             return
 
         if "force_stop" in inner:
-            if self.live:
-                self.live.stop()
+            self._stop_live()
             self.console.print(f"\n[bold red]Error:[/] {inner.get('force_stop_reason', 'unknown')}")
-            self._restart_live()
+            self.output = ""
+            self._need_gap = False
             return
         if "error" in inner:
-            if self.live:
-                self.live.stop()
+            self._stop_live()
             self.console.print(f"\n[bold red]Error:[/] {inner['error']}")
-            self._restart_live()
+            self.output = ""
+            self._need_gap = False
             return
 
         event_data = inner.get("event", {})
@@ -143,17 +159,20 @@ class TurnRenderer:
 
         # Tool use end
         if "contentBlockStop" in event_data and self.current_tool:
-            if self.output.strip():
+            # Commit any text that streamed before this tool (with a trailing
+            # gap), then print the tool line. Don't open a new Live here — it
+            # stays closed so consecutive tool calls render on adjacent lines.
+            if self.output.strip() and self.live:
                 self.live.update(Markdown(self.output))
-                self.live.stop()
+                self._stop_live()
                 self.console.print()
                 self.output = ""
-            elif self.live:
-                self.live.stop()
+            else:
+                self._stop_live()
             render_tool(self.current_tool, self.tool_buf, self.console)
+            self._need_gap = True
             self.current_tool = None
             self.tool_buf = ""
-            self._start_live()
             return
 
         # Deltas
@@ -164,14 +183,14 @@ class TurnRenderer:
             return
         chunk = delta.get("text", "")
         if chunk:
+            self._ensure_live()
             self.output += strip_ansi(chunk)
             self.live.update(Markdown(self.output))
 
     def finish(self):
         if self.output.strip() and self.live:
             self.live.update(Markdown(self.output))
-        if self.live:
-            self.live.stop()
+        self._stop_live()
         self._reset()
 
 
@@ -329,7 +348,7 @@ async def run():
         async def make_prompt():
             # prompt_async (not a worker thread) so a server-initiated turn can
             # cancel the idle prompt to take over the terminal.
-            return await prompt_session.prompt_async("❯ ")
+            return await prompt_session.prompt_async(PROMPT_MESSAGE, style=PROMPT_STYLE)
 
         try:
             await _interaction_loop(send, make_prompt, frame_q, renderer)
