@@ -61,7 +61,7 @@ module "atlantis_irsa_role" {
   role_name = "${var.cluster_name}-atlantis-irsa"
 
   role_policy_arns = {
-    atlantis = aws_iam_policy.atlantis_policy.arn
+    admin = "arn:aws:iam::aws:policy/AdministratorAccess"
   }
 
   oidc_providers = {
@@ -70,18 +70,6 @@ module "atlantis_irsa_role" {
       namespace_service_accounts = ["atlantis:atlantis"]
     }
   }
-}
-
-resource "aws_iam_policy" "atlantis_policy" {
-  name        = "${var.cluster_name}-atlantis-policy"
-  description = "Policy for Atlantis to manage Terraform-controlled AWS resources"
-
-  policy = templatefile("${path.module}/iam-policy.json", {
-    backend_bucket = var.backend_bucket
-    region         = var.region
-    account_id     = data.aws_caller_identity.current.account_id
-    cluster_name   = var.cluster_name
-  })
 }
 
 # ==============================================================================
@@ -291,7 +279,6 @@ resource "helm_release" "atlantis" {
 
   depends_on = [
     module.atlantis_irsa_role,
-    aws_iam_policy.atlantis_policy,
     aws_security_group.atlantis_alb
   ]
 }
