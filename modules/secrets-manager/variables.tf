@@ -6,10 +6,6 @@ variable "team" {
   type = string
 }
 
-variable "description" {
-  type = string
-}
-
 variable "owner" {
   type = string
 }
