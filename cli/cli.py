@@ -30,6 +30,8 @@ from bedrock_agentcore.runtime import AgentCoreRuntimeClient
 import psutil
 import websockets
 
+from mcp_auth import resolve_provider_tokens
+
 REGION = "us-west-2"
 HISTORY_DIR = os.path.join(os.path.dirname(__file__), ".chat_history")
 os.makedirs(HISTORY_DIR, exist_ok=True)
@@ -96,23 +98,27 @@ def needs_confirmation(text: str) -> bool:
     return bool(_CONFIRM_RE.search(last))
 
 
-async def confirm_proceed() -> bool | None:
+async def prompt_yes_no(question: str = "", default_yes: bool = True) -> bool | None:
     """Inline yes/no selector navigable with arrow keys.
 
-    Returns True for Yes, False for No, or None if the user cancels
-    (Ctrl-C / Ctrl-D).
+    If ``question`` is given it is shown ahead of the Yes/No options. Returns
+    True for Yes, False for No, or None if the user cancels (Ctrl-C / Ctrl-D).
     """
-    selected = 0  # 0 = Yes, 1 = No
+    selected = 0 if default_yes else 1  # 0 = Yes, 1 = No
 
     def get_fragments():
         yes_cls = "class:selected" if selected == 0 else "class:option"
         no_cls = "class:selected" if selected == 1 else "class:option"
-        return [
+        frags = []
+        if question:
+            frags.append(("class:question", f"  {question}"))
+        frags += [
             ("class:hint", "  ←/→ to choose, Enter to confirm   "),
             (yes_cls, " Yes "),
             ("", "  "),
             (no_cls, " No "),
         ]
+        return frags
 
     kb = KeyBindings()
 
@@ -148,6 +154,7 @@ async def confirm_proceed() -> bool | None:
     style = Style.from_dict(
         {
             "hint": "dim",
+            "question": "bold",
             "option": "",
             "selected": "reverse bold cyan",
         }
@@ -160,6 +167,12 @@ async def confirm_proceed() -> bool | None:
         mouse_support=False,
     )
     return await app.run_async()
+
+
+async def confirm_proceed() -> bool | None:
+    """Backward-compatible wrapper: the agent's own text already poses the
+    question, so no inline question is shown."""
+    return await prompt_yes_no()
 
 
 _CLOSED = object()  # sentinel: WebSocket closed
@@ -386,6 +399,22 @@ async def _interaction_loop(send, make_prompt, frame_q, renderer):
                 return
             continue
 
+        # Drain any stale frames (e.g. trailing turn_complete) before blocking
+        # on the prompt — prevents a tight cancel loop on prompt_async.
+        while not frame_q.empty():
+            peeked = frame_q.get_nowait()
+            if peeked is _CLOSED:
+                return
+            # A real server-initiated turn — render it and loop back.
+            if peeked.get("event") in ("async_complete", "stream"):
+                if not await _drive_turn(frame_q, renderer, send, peeked):
+                    return
+                break
+            # Stale turn_complete or unknown frame — discard.
+        else:
+            # Queue was empty or fully drained with no actionable frame.
+            pass
+
         prompt_task = asyncio.ensure_future(make_prompt())
         frame_task = asyncio.ensure_future(frame_q.get())
         done, _ = await asyncio.wait(
@@ -394,6 +423,10 @@ async def _interaction_loop(send, make_prompt, frame_q, renderer):
 
         # Server-initiated turn wins: preempt the prompt and render.
         if frame_task in done:
+            # Give prompt_async a moment to wind down before forcing cancel —
+            # prompt_toolkit needs an event-loop tick to restore terminal state.
+            prompt_task.cancel()
+            await asyncio.sleep(0.05)
             await _settle(prompt_task)
             first = frame_task.result()
             if first is _CLOSED or not await _drive_turn(frame_q, renderer, send, first):
@@ -419,7 +452,7 @@ async def _interaction_loop(send, make_prompt, frame_q, renderer):
         console.print()
         await send(json.dumps({"prompt": user_input}))
         if not await _drive_turn(frame_q, renderer, send, None):
-            return 
+            return
         console.print()
 
 
@@ -463,10 +496,26 @@ async def run():
         enable_suspend=False,
     )
 
+    # Resolve MCP integration tokens before connecting: reuse cached/refreshable
+    # tokens silently, and only prompt the user to launch a browser login when
+    # an integration actually needs interactive auth.
+    mcp_tokens = await resolve_provider_tokens(
+        prompt_yes_no,
+        notify=lambda msg: console.print(f"[dim]{msg}[/dim]"),
+    )
+
     async with websockets.connect(ws_url, additional_headers=headers) as ws:
+        # Send init message with any MCP tokens (agent expects this first).
+        init_msg = {"prompt": "Hello", **mcp_tokens}
+
+        await ws.send(json.dumps(init_msg))
+
         frame_q = asyncio.Queue()
         reader_task = asyncio.ensure_future(_reader(ws, frame_q))
         renderer = TurnRenderer(console)
+
+        # Render the agent's response to the init message
+        await _drive_turn(frame_q, renderer, lambda t: ws.send(t), None)
 
         async def send(text):
             await ws.send(text)
