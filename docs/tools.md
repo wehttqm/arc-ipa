@@ -130,4 +130,4 @@ For instructions on adding new tools, see [adding-tools.md](adding-tools.md).
 
 ### MCP Tools
 
-External integrations (currently Jira) connect via MCP (Model Context Protocol). Configuration is stored in AWS Secrets Manager (`arc-ipa/mcp`). See `tools/mcp.py` for the client setup.
+External integrations (currently Jira) connect via MCP (Model Context Protocol). Configuration is stored in AWS Secrets Manager (`arc-ipa/atlassian-mcp`). See `tools/mcp.py` for the client setup.
