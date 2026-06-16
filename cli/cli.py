@@ -543,3 +543,4 @@ if __name__ == "__main__":
         main()
     except KeyboardInterrupt:
         console.print("\n[dim]Interrupted.[/dim]")
+        exit(0)
