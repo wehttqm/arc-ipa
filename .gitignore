@@ -13,3 +13,8 @@
 **/.venv
 **/__pycache__
 **/.chat_history
+
+# Local MCP auth caches (contain OAuth client registration + tokens)
+**/.atlassian_mcp_token.json
+**/.atlassian_mcp_client.json
+**/.atlassian_token.json
