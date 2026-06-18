@@ -505,17 +505,20 @@ async def run():
     )
 
     async with websockets.connect(ws_url, additional_headers=headers) as ws:
-        # Send init message with any MCP tokens (agent expects this first).
-        init_msg = {"prompt": "Hello", **mcp_tokens}
-
-        await ws.send(json.dumps(init_msg))
+        # Send MCP tokens as a standalone init (decoupled from any prompt).
+        await ws.send(json.dumps(mcp_tokens))
 
         frame_q = asyncio.Queue()
         reader_task = asyncio.ensure_future(_reader(ws, frame_q))
         renderer = TurnRenderer(console)
 
-        # Render the agent's response to the init message
-        await _drive_turn(frame_q, renderer, lambda t: ws.send(t), None)
+        # Wait for init ack before starting interaction
+        while True:
+            frame = await frame_q.get()
+            if frame is _CLOSED:
+                return
+            if frame.get("event") == "init_ack":
+                break
 
         async def send(text):
             # Refresh any expired MCP tokens before each prompt
