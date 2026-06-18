@@ -37,9 +37,3 @@ variable "alarm_comparison_operator" {
   type        = string
   description = "Comparison operator for the alarm"
 }
-
-variable "cooldown_minutes" {
-  type        = number
-  description = "Duration in minutes the kill switch stays active after alarm triggers"
-  default     = 60
-}
