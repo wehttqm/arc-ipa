@@ -2,7 +2,7 @@
 
 ## Overview
 
-A Python CLI that connects developers to the infrastructure provisioning agent. It's a thin wrapper around the AgentCore SDK — handles auth, sets account context, and streams the conversation. The agent does the heavy lifting.
+A Python CLI that connects developers to the infrastructure provisioning agent. It's a thin wrapper around the AgentCore SDK — handles auth, sets environment context, and streams the conversation. The agent does the heavy lifting.
 
 ## Installation
 
@@ -15,10 +15,6 @@ Distributed via internal PyPI. Single dependency: `bedrock-agentcore` SDK.
 ## Usage
 
 ```bash
-# Specify account explicitly
-infra-agent --account aws-pf-sandbox
-
-# Use account from config
 infra-agent
 ```
 
@@ -26,19 +22,11 @@ infra-agent
 
 | Flag | Required | Description |
 |------|----------|-------------|
-| `--account` | Yes (or set in config) | Target AWS account alias (must exist in `account-mapping.json`) |
 | `--verbose` | No | Show tool calls and agent reasoning |
 
 ## Configuration
 
-Optional config file to avoid passing `--account` every time:
-
-```yaml
-# ~/.config/infra-agent/config.yaml
-account: aws-pf-sandbox
-```
-
-Project-level config (`.infra-agent.yaml` in repo root) takes precedence over global config.
+No configuration required. The agent collects environment, team, and purpose during the conversation.
 
 ## Authentication
 
@@ -46,8 +34,8 @@ Uses the developer's existing AWS credentials — no separate auth system.
 
 1. Developer has already run `aws sso login` (standard workflow)
 2. CLI reads credentials from the environment / AWS profile
-3. Caller identity (email, account) is derived from `sts:GetCallerIdentity`
-4. Identity is passed to AgentCore as session context
+3. Caller identity (email) is derived from `sts:GetCallerIdentity`
+4. Identity is passed to AgentCore for audit trail
 
 No API keys, no OAuth, no extra tokens.
 
@@ -56,11 +44,11 @@ No API keys, no OAuth, no extra tokens.
 ```
 CLI starts
   ↓
-1. Read --account (flag → project config → global config)
-2. Validate account exists in account-mapping.json
+1. Read --env (flag → project config → global config)
+2. Validate environment is valid (dev/staging/prod)
 3. Get caller identity from AWS STS
-4. Open AgentCore session via InvokeAgentRuntime (streaming)
-5. Pass session context: { account, user_email }
+4. Open AgentCore session via WebSocket
+5. Pass user identity: { user_email }
   ↓
 Conversation loop:
   - User types → send to agent session
@@ -73,14 +61,15 @@ Session ends on:
   - Agent completes task and session idles out (15 min)
 ```
 
-## Session Context
+## User Identity
 
-The CLI passes these to AgentCore at session start. The agent receives them as immutable facts.
+The CLI passes user identity at session start for audit trail and Jira attribution.
 
 | Field | Source | Example |
 |-------|--------|---------|
 | `user_email` | STS / SSO identity | `matthew.falcone@arcteryx.com` |
-| `account` | `--account` flag or config | `aws-pf-sandbox` |
+
+The target environment (dev/staging/prod) is collected by the agent during the conversation, not set at session level. This allows a single session to handle multiple environments.
 
 ## Async Behavior
 
@@ -100,21 +89,17 @@ import click
 from bedrock_agentcore.runtime import BedrockAgentCoreClient
 
 @click.command()
-@click.option("--account", required=False)
 @click.option("--verbose", is_flag=True)
-def main(account, verbose):
-    account = account or load_config_account()
-    validate_account(account)
-
+def main(verbose):
     user_email = get_caller_identity()
 
     client = BedrockAgentCoreClient()
     session = client.create_session(
         agent_id=AGENT_ID,
-        context={"account": account, "user_email": user_email}
+        context={"user_email": user_email}
     )
 
-    click.echo(f"Connected | Account: {account} | User: {user_email}")
+    click.echo(f"Connected | User: {user_email}")
     click.echo("Type your request (Ctrl+C to exit)\n")
 
     while True:
@@ -139,35 +124,29 @@ It's a terminal into the agent. That's it.
 ## Example Session
 
 ```
-$ infra-agent --account aws-pf-sandbox
+$ infra-agent
 
-Connected | Account: aws-pf-sandbox | User: matthew.falcone@arcteryx.com
+Connected | User: matthew.falcone@arcteryx.com
 Type your request (Ctrl+C to exit)
 
 > I need an S3 bucket for raw event ingestion
 
-I can help with that. Which team are you on?
+I can help with that. A few questions:
+- Which team?
+- Which environment (dev, staging, or prod)?
 
-> ecomm
+> ecomm, dev
 
-✓ Validated. Here's what I'll provision:
+I'll provision this:
 
-  Bucket: arcteryx-ecomm-sandbox-raw-event-ingestion
-  Account: aws-pf-sandbox
-  Workspace: pf-sandbox-usw2
-  Tags: team=ecomm, environment=sandbox, managed-by=agentcore, ...
+  Bucket: arcteryx-ecomm-dev-raw-event-ingestion
+  Environment: dev
+  Tags: team=ecomm, environment=dev, managed-by=terraform, ...
 
-  Want me to create the PR?
+  Ready to provision?
 
 > yes
 
-Done. PR #247 created: github.com/arcteryx-platform/infra-provisioning/pull/247
-Waiting for Atlantis plan...
-
-✓ Plan succeeded: 1 to add, 0 to change, 0 to destroy.
-Applying...
-
-✓ Applied. Your bucket is provisioned.
-  ARN: arn:aws:s3:::arcteryx-ecomm-sandbox-raw-event-ingestion
-  PR: #247 (merged)
+Done. Your bucket is provisioned.
+  ARN: arn:aws:s3:::arcteryx-ecomm-dev-raw-event-ingestion
 ```

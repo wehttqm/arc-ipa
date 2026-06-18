@@ -9,6 +9,7 @@ For instructions on adding new tools, see [adding-tools.md](adding-tools.md).
 | Tool | Purpose | Backed By |
 |------|---------|-----------|
 | `validate_request` | Check request against standards before writing Terraform | GitHub API → reads `standards/` from `arc-ipa-tf` |
+| `read_standard` | Load a situational standards doc on demand (kubernetes, debugging, planning) | GitHub API → reads `standards/` from `arc-ipa-tf` |
 | `list_files` | List files and directories in `arc-ipa-tf` | GitHub Contents API |
 | `read_file` | Read any file in `arc-ipa-tf` | GitHub Contents API |
 | `write_file` | Create or update any file in `arc-ipa-tf` | GitHub Contents API |
@@ -20,23 +21,32 @@ For instructions on adding new tools, see [adding-tools.md](adding-tools.md).
 | `list_pull_requests` | List PRs with optional filters | GitHub API |
 | `list_commits` | View commit history, optionally filtered by file | GitHub API |
 | `wait_for_atlantis` | Wait for Atlantis plan/apply to complete | Async task + webhook |
-| `get_mcp_tools` | Load MCP-based integrations (Jira) | MCP over Streamable HTTP |
+| MCP tools | External integrations (Atlassian/Jira) | MCP over Streamable HTTP |
 
 ## Tool Details
 
 ### `validate_request`
 
 **Inputs:**
-- `resource_type` — e.g. `s3_bucket`, `k8s_namespace`
+- `resource_type` — e.g. `s3_bucket`, `lambda`, `k8s_namespace`
 - `team`
 - `purpose`
-- `account` — from session context
+- `environment` — target environment (`dev`, `staging`, `prod`) — developer provides
 
 **Behavior:**
-1. Reads `standards/naming.json` → validates name pattern
-2. Reads `standards/tagging.json` → confirms all required tags can be derived
-3. Reads `standards/account-mapping.json` → confirms account exists, resolves workspace
-4. Returns pass/fail with specific errors
+1. Validates environment is known
+2. Reads `standards/naming.json` → generates name from pattern, validates length
+3. Reads `standards/tagging.json` → confirms all required tags can be resolved
+4. Returns pass/fail with resolved name and approval requirement
+
+### `read_standard`
+
+**Inputs:**
+- `name` — filename in `standards/` (e.g. `kubernetes.md`, `debugging.md`)
+
+**Returns:** The standard document content (frontmatter stripped).
+
+Core standards (`terraform.md`, `aws-infrastructure.md`) are already in the agent's system prompt — this tool is for situational guidance the agent pulls when relevant.
 
 ### `list_files`
 
@@ -93,7 +103,7 @@ For instructions on adding new tools, see [adding-tools.md](adding-tools.md).
 
 **Inputs:**
 - `pr_number`
-- `body` — comment text (e.g. `atlantis plan -p s3-buckets-pf-sandbox-usw2`)
+- `body` — comment text (e.g. `atlantis apply -p s3-buckets-pf-sandbox-usw2`)
 
 **Returns:** Comment ID.
 
@@ -126,8 +136,8 @@ For instructions on adding new tools, see [adding-tools.md](adding-tools.md).
 - `pr_number` — the PR to watch
 - `event_type` — `plan` or `apply`
 
-**Behavior:** Registers an async task (marks session as `HealthyBusy`) and waits for the GitHub App webhook to deliver the Atlantis result. The webhook Lambda re-invokes the same session via AgentCore session affinity.
+**Behavior:** Registers an async task (marks session as `HealthyBusy`) and waits for the GitHub App webhook to deliver the Atlantis result. The webhook is delivered to the same session via in-process queue (session affinity).
 
 ### MCP Tools
 
-External integrations (currently Jira) connect via MCP (Model Context Protocol). Configuration is stored in AWS Secrets Manager (`arc-ipa/atlassian-mcp`). See `tools/mcp.py` for the client setup.
+External integrations (currently Atlassian/Jira) connect via MCP (Model Context Protocol). The CLI provides OAuth tokens at session init; the agent uses them for Jira ticket tracking and Confluence lookups. See `tools/mcp.py` for the client setup.

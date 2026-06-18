@@ -19,41 +19,11 @@ The Infrastructure Provisioning Agent runs on AWS Bedrock AgentCore. It receives
 The system prompt encodes:
 
 - The agent's role: infrastructure provisioning for Arc'teryx dev teams
-- Conversation behavior: ask only what it can't already know (team, purpose). Never ask about account (comes from CLI context), security config (comes from standards).
+- Conversation behavior: ask only what it can't already know (team, purpose). Never ask about environment (comes from CLI context), security config (comes from standards).
 - Available tools and when to use them
 - Constraints: never provision without validation, never bypass standards, always create a PR
 
-The prompt does NOT encode specific standards (naming patterns, required tags, account mappings). Those come from `standards/` in the repo so they can be updated without redeploying the agent.
-
-### Draft Prompt
-
-```
-You are an infrastructure provisioning agent for Arc'teryx development teams.
-
-You help developers provision cloud infrastructure by writing Terraform and opening pull requests. You follow existing patterns in the codebase and enforce company standards.
-
-CONTEXT:
-- The target AWS account is provided in your session context. Never ask which account to use.
-- Standards (naming, tagging, account-mapping) are in the standards/ directory of arc-ipa-tf. Always read them via validate_request before writing Terraform.
-- Security configuration (encryption, public access, versioning) is defined by standards. Do not ask the developer about these.
-
-WORKFLOW:
-1. Collect only what you need from the developer: team name, purpose/description of the resource.
-2. Call validate_request to check the request against standards.
-3. Read existing Terraform in the repo (read_file) to understand patterns and structure.
-4. Write the Terraform (write_file) following existing patterns.
-5. Open a PR (create_pull_request) with a clear description of what's being provisioned and why.
-6. Comment on the PR (comment_on_pr) to trigger Atlantis plan.
-7. Wait for the plan result. If clean and account is non-protected, comment to apply. If protected, call notify_approver and wait.
-8. Report the final result to the developer.
-
-CONSTRAINTS:
-- Never write Terraform without validating first.
-- Never skip the PR — all changes go through Git.
-- Never provision in an account that requires_approval without PFND approval.
-- If validation fails, explain why and help the developer fix the request.
-- If the Terraform plan fails, report the error clearly — do not retry without developer input.
-```
+At boot time, the core markdown standards (`terraform.md`, `aws-infrastructure.md`) are appended to the system prompt so the agent always writes Terraform with those conventions in context.
 
 ## Tools
 
@@ -64,12 +34,12 @@ See [adding-tools.md](adding-tools.md) for instructions on adding new tools.
 ## Session Lifecycle
 
 ```
-1. CLI opens session → AgentCore creates runtime session
+1. CLI opens WebSocket → agent instance created with injected standards
 2. User sends message → agent processes, calls tools
 3. Agent creates PR → calls add_async_task("waiting_for_atlantis")
 4. Agent responds to user ("PR created, waiting for plan")
 5. Session reports HealthyBusy → stays alive
-6. GitHub App webhook fires → InvokeAgentRuntime on same session
+6. GitHub App webhook fires → delivered to same session via queue
 7. Agent resumes with plan result → comments apply (or reports error)
 8. GitHub App webhook fires again → apply result
 9. Agent responds to user ("provisioned, here's your ARN")

@@ -23,18 +23,19 @@ arc-ipa-tf/
 │           ├── provider.tf
 │           └── workspaces/
 │               └── pf-sandbox-usw2.tfvars.json
-├── standards/                  (validation rules as code)
+├── standards/                  (validation rules + agent guidance)
 │   ├── naming.json
 │   ├── tagging.json
-│   └── account-mapping.json
+│   ├── outputs.json
+│   ├── terraform.md
+│   ├── aws-infrastructure.md
+│   └── kubernetes.md
 └── atlantis.yaml               (project config — maps dirs to workspaces)
 ```
 
 - `modules/` — per-resource-type directories (e.g. `modules/s3-buckets/`), each containing a `terraform/` directory with configs and workspace-specific tfvars. The agent reads these to understand patterns and writes new Terraform here.
-- `standards/` — the agent reads these at runtime for validation. Updated via PR.
+- `standards/` — JSON for machine-enforced validation, markdown for agent guidance. Updated via PR.
 - `atlantis.yaml` — defines project names, workspaces, and tfvars paths.
-
-The agent writes files into `arc-ipa-tf` the same way a human would — the PR (authored by the GitHub App) identifies it as agent-generated.
 
 ## Role in the System
 
@@ -51,7 +52,7 @@ The agent writes files into `arc-ipa-tf` the same way a human would — the PR (
 | 2 | Reads Atlantis plan comment (via webhook) | — |
 | 3 | Comments `atlantis apply -p <project>` | Runs `terraform apply`, posts result as PR comment |
 
-**Important:** The agent must NOT comment `atlantis plan` immediately after opening a PR. Autoplan is enabled — Atlantis will detect the changed files and plan automatically. Commenting plan manually would trigger a duplicate run. The agent should only comment `atlantis plan -p <project>` if it needs to re-plan (e.g., after pushing additional commits or if the initial autoplan failed).
+**Important:** The agent must NOT comment `atlantis plan` immediately after opening a PR. Autoplan is enabled — Atlantis will detect the changed files and plan automatically. The agent should only comment `atlantis plan -p <project>` if it needs to re-plan (e.g., after pushing additional commits or if the initial autoplan failed).
 
 ## Project Configuration (`atlantis.yaml`)
 
@@ -85,27 +86,25 @@ workflows:
 
 Key points:
 - `name` is what the agent passes to `-p` in comments
-- `workspace` maps to the Terraform workspace (resolved from `account-mapping.json`)
+- `workspace` maps to the Terraform workspace
 - `extra_args` passes the correct tfvars file automatically
 - `autoplan` triggers on relevant file changes in the PR
 
 ## Agent → Atlantis Mapping
 
-Atlantis doesn't know about AWS accounts — it only knows project names. The agent's CLI context gives it an account (`aws-pf-sandbox`), but Atlantis needs a project name (`s3-buckets-pf-sandbox-usw2`) to know which workspace and tfvars to use. This mapping bridges the gap between what the developer provides and what Atlantis requires.
+The agent derives the Atlantis project name from the resource type and the workspace (which comes from the environment the developer specifies and the `atlantis.yaml` config). The agent reads `atlantis.yaml` to discover the correct project name.
 
 ```
-account (from CLI)  →  account-mapping.json  →  workspace  →  project name
-aws-pf-sandbox      →  pf-sandbox-usw2       →  s3-buckets-pf-sandbox-usw2
+environment (from developer) → workspace in atlantis.yaml → project name
+dev                                → pf-sandbox-usw2             → s3-buckets-pf-sandbox-usw2
 ```
-
-Without this, the agent would have to hardcode or guess project names, which breaks if workspaces are added or renamed.
 
 ## Approval Flow
 
-| Account Flag | Agent Behavior |
+| Environment | Agent Behavior |
 |-------------|----------------|
-| `requires_approval: false` | Agent comments `atlantis apply` immediately after clean plan |
-| `requires_approval: true` | Agent calls `notify_approver`, waits for PFND engineer to approve the PR, then comments `atlantis apply` |
+| dev/staging | Agent comments `atlantis apply` immediately after clean plan |
+| prod | Agent notifies approver, waits for PFND engineer to approve the PR, then comments `atlantis apply` |
 
 For protected environments, the PR requires a GitHub review approval before Atlantis will accept the apply comment. This is configured via Atlantis `apply_requirements`:
 
@@ -155,7 +154,7 @@ Applied successfully for project: `s3-buckets-pf-sandbox-usw2`
 
 Atlantis itself is deployed on EKS in the platform account. Its infrastructure (Helm chart, IRSA role, IAM policy) is managed in `arc-ipa` under `modules/atlantis/terraform/`.
 
-The IRSA role (`pf-sandbox-platform-dev-atlantis-irsa`) determines what Atlantis can provision. Permissions must be added to `modules/atlantis/terraform/iam-policy.json` in `arc-ipa` before the agent can provision new resource types.
+The IRSA role determines what Atlantis can provision. Permissions must be added to `modules/atlantis/terraform/iam-policy.json` in `arc-ipa` before the agent can provision new resource types.
 
 ## Adding a New Resource Type
 
