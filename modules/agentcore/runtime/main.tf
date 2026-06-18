@@ -51,6 +51,7 @@ resource "aws_bedrockagentcore_agent_runtime" "this" {
       AWS_REGION         = var.region
       AWS_DEFAULT_REGION = var.region
       SESSIONS_TABLE     = data.terraform_remote_state.webhook_handler.outputs.sessions_table_name
+      KILL_SWITCH_PARAM  = "/${var.stack_name}/kill-switch"
     },
     var.environment_variables
   )

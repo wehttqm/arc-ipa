@@ -74,7 +74,8 @@ resource "aws_lambda_function" "webhook" {
   handler       = "index.handler"
   runtime       = "python3.12"
   timeout       = 30
-  filename      = data.archive_file.lambda.output_path
+  filename         = data.archive_file.lambda.output_path
+  source_code_hash = data.archive_file.lambda.output_base64sha256
 
   environment {
     variables = {
