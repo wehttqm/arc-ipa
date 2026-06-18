@@ -30,7 +30,7 @@ from bedrock_agentcore.runtime import AgentCoreRuntimeClient
 import psutil
 import websockets
 
-from mcp_auth import resolve_provider_tokens
+from mcp_auth import resolve_provider_tokens, REGISTRY
 
 REGION = "us-west-2"
 HISTORY_DIR = os.path.join(os.path.dirname(__file__), ".chat_history")
@@ -518,6 +518,12 @@ async def run():
         await _drive_turn(frame_q, renderer, lambda t: ws.send(t), None)
 
         async def send(text):
+            # Refresh any expired MCP tokens before each prompt
+            for provider in REGISTRY:
+                token = await asyncio.to_thread(provider.get_token_silent)
+                if token and token != mcp_tokens.get(provider.token_key):
+                    mcp_tokens[provider.token_key] = token
+                    await ws.send(json.dumps({"token_refresh": {provider.token_key: token}}))
             await ws.send(text)
 
         async def make_prompt():
