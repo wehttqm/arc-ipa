@@ -28,7 +28,7 @@ resource "aws_cloudwatch_metric_alarm" "input_token_daily_limit" {
   evaluation_periods  = var.alarm_evaluation_periods
   threshold           = var.alarm_threshold
 
-  metric_name = "InputTokenCount"
+  metric_name = "CacheWriteInputTokenCount"
   namespace   = "AWS/Bedrock"
   statistic   = var.alarm_statistic
   period      = var.alarm_period
