@@ -49,7 +49,9 @@ resource "aws_bedrockagentcore_agent_runtime" "this" {
   lifecycle {
     # important: Prevents Terraform from resetting the container tag back to ":latest"
     # during infra updates when GHA has pushed a specific Git SHA tag instead.
-    ignore_changes = [ image_uri ]
+    ignore_changes = [ 
+      agent_runtime_artifact[0].container_configuration[0].container_uri
+     ]
   }
 
   environment_variables = merge(
