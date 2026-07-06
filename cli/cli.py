@@ -7,6 +7,7 @@ import json
 import os
 import platform
 import re
+import ssl
 import sys
 import uuid
 
@@ -504,7 +505,11 @@ async def run():
         notify=lambda msg: console.print(f"[dim]{msg}[/dim]"),
     )
 
-    async with websockets.connect(ws_url, additional_headers=headers) as ws:
+    _ca_bundle = os.environ.get("AWS_CA_BUNDLE")
+    ssl_ctx = ssl.create_default_context(cafile=_ca_bundle) if _ca_bundle else ssl.create_default_context()
+    ssl_ctx.verify_flags &= ~ssl.VERIFY_X509_STRICT
+
+    async with websockets.connect(ws_url, additional_headers=headers, ssl=ssl_ctx) as ws:
         # Send MCP tokens as a standalone init (decoupled from any prompt).
         await ws.send(json.dumps(mcp_tokens))
 
