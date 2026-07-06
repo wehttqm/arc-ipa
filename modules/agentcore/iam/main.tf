@@ -70,6 +70,34 @@ resource "aws_iam_role_policy" "agent_execution" {
         Resource = "arn:aws:logs:${data.aws_region.current.name}:${data.aws_caller_identity.current.id}:log-group:/aws/bedrock-agentcore/runtimes/*"
       },
       {
+        # Required for GenAI observability span export. The ADOT OTLP trace
+        # exporter ships spans via the X-Ray endpoint; without these actions the
+        # exporter gets "403 Forbidden" and spans never reach Transaction Search
+        # (logs still work via CloudWatchLogs above, which is why Invocations
+        # populate but the Traces view stays empty).
+        Sid    = "XRayTraceExport"
+        Effect = "Allow"
+        Action = [
+          "xray:PutTraceSegments",
+          "xray:PutTelemetryRecords",
+          "xray:GetSamplingRules",
+          "xray:GetSamplingTargets"
+        ]
+        Resource = ["*"]
+      },
+      {
+        # AgentCore runtime metrics namespace (paired with the ADOT pipeline).
+        Sid      = "CloudWatchMetrics"
+        Effect   = "Allow"
+        Action   = "cloudwatch:PutMetricData"
+        Resource = "*"
+        Condition = {
+          StringEquals = {
+            "cloudwatch:namespace" = "bedrock-agentcore"
+          }
+        }
+      },
+      {
         Sid    = "BedrockModelInvocation"
         Effect = "Allow"
         Action = [
