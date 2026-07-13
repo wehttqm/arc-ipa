@@ -15,7 +15,7 @@ The agent operates on `arc-ipa-tf`:
 
 ```
 arc-ipa-tf/
-├── modules/                    (per-resource-type directories)
+├── modules/
 │   └── s3-buckets/
 │       └── terraform/
 │           ├── main.tf
@@ -23,18 +23,23 @@ arc-ipa-tf/
 │           ├── provider.tf
 │           └── workspaces/
 │               └── pf-sandbox-usw2.tfvars.json
-├── standards/                  (validation rules + agent guidance)
-│   ├── naming.json
-│   ├── tagging.json
-│   ├── outputs.json
-│   ├── terraform.md
-│   ├── aws-infrastructure.md
-│   └── kubernetes.md
-└── atlantis.yaml               (project config — maps dirs to workspaces)
+├── standards/
+│   ├── policies/
+│   │   ├── accounts.json
+│   │   ├── naming.json
+│   │   └── tagging.json
+│   ├── prompts/
+│   │   ├── terraform.md
+│   │   └── aws-infrastructure.md
+│   └── references/
+│       ├── kubernetes.md
+│       ├── infra-planning.md
+│       └── debugging.md
+└── atlantis.yaml
 ```
 
 - `modules/` — per-resource-type directories (e.g. `modules/s3-buckets/`), each containing a `terraform/` directory with configs and workspace-specific tfvars. The agent reads these to understand patterns and writes new Terraform here.
-- `standards/` — JSON for machine-enforced validation, markdown for agent guidance. Updated via PR.
+- `standards/` — split into `policies/` (JSON for machine-enforced validation), `prompts/` (markdown injected into agent context at boot), and `references/` (on-demand lookup). Updated via PR.
 - `atlantis.yaml` — defines project names, workspaces, and tfvars paths.
 
 ## Role in the System
@@ -152,16 +157,7 @@ Applied successfully for project: `s3-buckets-pf-sandbox-usw2`
 
 ## Atlantis Infrastructure
 
-Atlantis itself is deployed on EKS in the platform account. Its infrastructure (Helm chart, IRSA role, IAM policy) is managed in `arc-ipa` under `modules/atlantis/terraform/`.
+Atlantis itself is deployed on EKS in the pf-sandbox-usw2 account. Its infrastructure (Helm chart, IRSA role, IAM policy) is managed in `arc-ipa` under `modules/atlantis/terraform/`.
 
 The IRSA role determines what Atlantis can provision. Permissions must be added to `modules/atlantis/terraform/iam-policy.json` in `arc-ipa` before the agent can provision new resource types.
 
-## Adding a New Resource Type
-
-To enable the agent to provision a new resource type via Atlantis:
-
-1. Add IAM permissions for the resource to `modules/atlantis/terraform/iam-policy.json` in `arc-ipa`
-2. Apply the atlantis project (`atlantis plan/apply -p atlantis-pf-sandbox-usw2`)
-3. Add an `atlantis.yaml` project entry in `arc-ipa-tf` for the new resource type
-4. Update `standards/` in `arc-ipa-tf` with naming/tagging rules for the new type
-5. The agent can now provision it

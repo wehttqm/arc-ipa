@@ -2,14 +2,12 @@
 
 All tools are defined in `infra-agent/tools/`, one function per file, decorated with `@tool` from the Strands SDK. All GitHub operations target `arc-ipa-tf` and authenticate via the GitHub App installation token.
 
-For instructions on adding new tools, see [adding-tools.md](adding-tools.md).
-
 ## Tool Inventory
 
 | Tool | Purpose | Backed By |
 |------|---------|-----------|
 | `validate_request` | Check request against standards before writing Terraform | GitHub API → reads `standards/` from `arc-ipa-tf` |
-| `read_standard` | Load a situational standards doc on demand (kubernetes, debugging, planning) | GitHub API → reads `standards/` from `arc-ipa-tf` |
+| `lookup_standard` | Load a reference standard on demand (kubernetes, debugging, planning) | GitHub API → reads `standards/references/` from `arc-ipa-tf` |
 | `list_files` | List files and directories in `arc-ipa-tf` | GitHub Contents API |
 | `read_file` | Read any file in `arc-ipa-tf` | GitHub Contents API |
 | `write_file` | Create or update any file in `arc-ipa-tf` | GitHub Contents API |
@@ -39,14 +37,14 @@ For instructions on adding new tools, see [adding-tools.md](adding-tools.md).
 3. Reads `standards/tagging.json` → confirms all required tags can be resolved
 4. Returns pass/fail with resolved name and approval requirement
 
-### `read_standard`
+### `lookup_standard`
 
 **Inputs:**
-- `name` — filename in `standards/` (e.g. `kubernetes.md`, `debugging.md`)
+- `name` (str, optional) — reference filename (e.g. `kubernetes.md`). Empty to list available.
 
-**Returns:** The standard document content (frontmatter stripped).
+**Returns:** If no name given, lists available references in `standards/references/`. If name given, returns the file content with frontmatter stripped.
 
-Core standards (`terraform.md`, `aws-infrastructure.md`) are already in the agent's system prompt — this tool is for situational guidance the agent pulls when relevant.
+**Note:** Core standards (`terraform.md`, `aws-infrastructure.md`) are in `prompts/` and injected into the system prompt at boot — this tool is ONLY for on-demand references.
 
 ### `list_files`
 
@@ -79,7 +77,8 @@ Core standards (`terraform.md`, `aws-infrastructure.md`) are already in the agen
 **Inputs:**
 - `branch` — source branch
 - `title`
-- `body` — PR description
+- `description` — PR description
+- `base` (str) — target branch (defaults to `main`)
 
 **Returns:** PR number and URL.
 
@@ -117,27 +116,46 @@ Core standards (`terraform.md`, `aws-infrastructure.md`) are already in the agen
 ### `list_pull_requests`
 
 **Inputs:**
-- `state` — `open`, `closed`, or `all` (defaults to open)
+- `state` (str) — `open`, `closed`, or `all` (default: open)
+- `search` (str) — optional keyword to filter PRs by title
 
-**Returns:** List of PRs matching the filter.
+**Returns:** Formatted list of PRs with number, state, title, and branch name.
 
 ### `list_commits`
 
 **Inputs:**
-- `path` — file path to filter commits for (empty for all commits)
-- `branch` — branch to list from (defaults to main)
-- `limit` — number of commits to return (defaults to 10)
+- `path` (str) — file path to filter commits for (empty for all)
+- `branch` (str) — branch to list from (defaults to main)
+- `limit` (int) — number of commits (defaults to 10)
 
-**Returns:** Formatted list of commits with SHA, date, author, and message.
+**Returns:** Formatted list with short SHA, date, author, and first line of message.
 
 ### `wait_for_atlantis`
 
-**Inputs:**
-- `pr_number` — the PR to watch
-- `event_type` — `plan` or `apply`
+> **Note:** This tool is NOT a `@tool` decorator tool — it's a raw ToolSpec/ToolResult handler (custom tool protocol).
 
-**Behavior:** Registers an async task (marks session as `HealthyBusy`) and waits for the GitHub App webhook to deliver the Atlantis result. The webhook is delivered to the same session via in-process queue (session affinity).
+**Inputs:**
+- `repo_full_name` (str) — full repo name e.g. `wehttqm/arc-ipa-tf`
+- `pr_number` (int) — PR number
+- `event_type` (str) — `plan` or `apply` (default: plan)
+
+**Behavior:** Registers an async task (HEALTHY_BUSY), stores session mapping in DynamoDB (key: `{repo_full_name}#{pr_number}`, value: session_id), and sets `stop_event_loop=True` so the agent loop terminates after this tool. Session resumes automatically via webhook.
 
 ### MCP Tools
 
-External integrations (currently Atlassian/Jira) connect via MCP (Model Context Protocol). The CLI provides OAuth tokens at session init; the agent uses them for Jira ticket tracking and Confluence lookups. See `tools/mcp.py` for the client setup.
+External integrations connect via MCP (Model Context Protocol) using **streamable HTTP transport**.
+
+**Currently integrated:** Atlassian (Jira read/search via `https://mcp.atlassian.com/v2/mcp`)
+
+**Tool whitelist:**
+- `getAccessibleAtlassianResources`
+- `atlassianUserInfo`
+- `getJiraIssue`
+- `getJiraIssueRemoteIssueLinks`
+- `getVisibleJiraProjects`
+- `lookupJiraAccountId`
+- `searchJiraIssuesUsingJql`
+
+**Auth:** The CLI provides OAuth tokens at session init; the agent-side uses a `TokenHolder` pattern for mid-session token refresh.
+
+**Configuration:** The `MCP_REGISTRY` dict maps token keys to server URLs and tool filters. See `tools/mcp.py` for the client setup.

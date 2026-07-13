@@ -2,10 +2,10 @@
 
 ## Overview
 
-A GitHub App provides the agent's identity on GitHub and acts as the event bridge between Atlantis and AgentCore. It is installed on `arc-ipa-tf` and has two roles:
+A GitHub App provides the agent's identity on GitHub and acts as the event bridge between Atlantis and AgentCore. It is installed on `wehttqm/arc-ipa-tf` and has two roles:
 
-1. **Outbound:** All agent GitHub operations (branches, commits, PRs, comments) on `arc-ipa-tf` are performed as the app
-2. **Inbound:** Receives webhooks when Atlantis comments on `arc-ipa-tf` PRs, and re-invokes the agent session with the result
+1. **Outbound:** All agent GitHub operations (branches, commits, PRs, comments) on `wehttqm/arc-ipa-tf` are performed as the app
+2. **Inbound:** Receives webhooks when Atlantis comments on `wehttqm/arc-ipa-tf` PRs, and re-invokes the agent session with the result
 
 ## Why a GitHub App
 
@@ -39,60 +39,64 @@ GitHub fires issue_comment event
 API Gateway receives payload
          ↓
 Lambda handler:
-  1. Verify webhook signature (X-Hub-Signature-256)
-  2. Check: is the comment author the Atlantis bot?
-  3. If no → ignore
-  4. Parse Atlantis comment for status:
-     - "Ran Plan for project X" → plan output
-     - "Plan Failed" → plan error
-     - "Applied successfully" → apply success
-     - "Apply Failed" → apply error
-  5. Look up the AgentCore session ID (stored in PR description or labels)
-  6. Call InvokeAgentRuntime with:
-     - session_id
-     - payload: { event: "atlantis_result", status: "plan_succeeded", output: "..." }
+  1. Verify webhook signature (X-Hub-Signature-256) using secret from Secrets Manager
+  2. Respond to ping events (return 200 'pong')
+  3. Check: action == 'created'? If not, ignore
+  4. Check: is comment author's login contain 'atlantis'? If not, ignore
+  5. Extract repo_full_name and pr_number
+  6. Build composite key: "{repo_full_name}#{pr_number}"
+  7. Look up session in DynamoDB by composite key
+  8. If no session found → return 200 (no one waiting)
+  9. Detect event_type from comment body ('apply' if contains 'Ran Apply' or 'apply complete', else 'plan')
+  10. Call bedrock-agentcore:InvokeAgentRuntime with:
+      - agentRuntimeArn from env
+      - runtimeSessionId from DynamoDB record
+      - payload: {"webhook": {repo_full_name, pr_number, comment_body, event_type}}
+  11. Delete the DynamoDB record (one-shot delivery)
 ```
 
 ## Outbound Flow (Agent → GitHub)
 
-All agent tools (`read_file`, `write_file`, `create_pull_request`, `comment_on_pr`) target `arc-ipa-tf` and authenticate as the GitHub App:
+All agent tools (`read_file`, `write_file`, `create_pull_request`, `comment_on_pr`) target `wehttqm/arc-ipa-tf` and authenticate as the GitHub App via the `github_app.py` module in the agent process:
 
 ```
-Agent tool invoked
+Agent tool invoked (e.g. read_file, create_pull_request)
          ↓
-Lambda handler:
-  1. Generate JWT from app private key
-  2. Exchange JWT for installation access token
-  3. Call GitHub API with installation token
-  4. Return result to agent
+github_app.py:
+  1. Load GitHub App credentials from Secrets Manager ('arc-ipa/github-app')
+  2. Generate JWT (RS256, 10-min expiry) using app_id + private_key
+  3. Exchange JWT for installation access token (cached, refreshed when <60s from expiry)
+  4. Call GitHub API with installation token
+  5. Return result to tool
 ```
 
-Installation tokens expire after 1 hour and are scoped to the repos where the app is installed.
+The agent authenticates directly — no intermediate Lambda for outbound calls.
 
 ## Session Tracking
 
-The agent needs to know which AgentCore session corresponds to which PR. Options:
+The agent uses a DynamoDB table to map PRs to AgentCore sessions:
 
-1. **PR description** — embed session ID in the PR body (hidden in an HTML comment)
-2. **PR label** — add a label like `agentcore-session:abc123`
-3. **External mapping** — DynamoDB table mapping PR number → session ID
-
-Recommendation: option 1 (PR description) is simplest and requires no extra infra.
+- **Table:** `SESSIONS_TABLE` env var (default: `infra-agent-webhook-sessions`)
+- **Key:** `repo_pr` (string) — format `{owner}/{repo}#{pr_number}` (e.g. `wehttqm/arc-ipa-tf#42`)
+- **Attributes:** `session_id`, `task_id`, `event_type`, `ttl` (24h)
+- **Write:** The `wait_for_atlantis` tool writes the record when the agent starts waiting for Atlantis
+- **Read + Delete:** The webhook Lambda reads the record to find the session, then deletes it after delivering the result (one-shot delivery)
 
 ## Infrastructure
 
 | Component | Implementation |
-|-----------|---------------|
-| Webhook receiver | Lambda + API Gateway (HTTPS endpoint) |
-| App credentials | Private key stored in Secrets Manager |
-| Deployment | Part of the agent's Terraform in `arc-ipa` |
+|-----------|----------------|
+| Webhook receiver | Lambda + API Gateway (HTTPS) |
+| Session mapping | DynamoDB table (repo_pr → session_id, TTL 24h) |
+| App credentials (GitHub) | Secrets Manager (`arc-ipa/github-app`: app_id, private_key, installation_id) |
+| Webhook secret | Secrets Manager (same or separate secret, referenced by `SECRET_NAME` env var) |
 
 ## App Registration
 
-1. Create the app in the Arc'teryx GitHub org settings
+1. Create the app in the GitHub org settings
 2. Set homepage URL, webhook URL (API Gateway endpoint)
 3. Generate and store private key in Secrets Manager
-4. Install the app on `arc-ipa-tf`
+4. Install the app on `wehttqm/arc-ipa-tf`
 
 ## Error Handling
 
@@ -100,6 +104,6 @@ Recommendation: option 1 (PR description) is simplest and requires no extra infr
 |----------|----------|
 | Webhook signature invalid | Reject (401) |
 | Comment is not from Atlantis | Ignore (200) |
-| Session ID not found for PR | Log warning, skip |
-| AgentCore session expired | Create new session, reconstruct context from PR description (contains account, user, resource details, session ID) |
+| No session found for PR | Return 200, log (no one was waiting) |
+| AgentCore session expired | The webhook Lambda invokes AgentCore; if the session is gone, AgentCore handles it |
 | GitHub API rate limit | Retry with backoff |

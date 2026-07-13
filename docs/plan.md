@@ -3,7 +3,7 @@
 **Team:** Platform Foundation (PFND)
 **Author:** Matthew Falcone
 **Date:** May 29, 2026
-**Status:** Draft — Pending review with AWS (Ari's team)
+**Status:** Active — Milestone 2 complete
 
 ---
 
@@ -139,26 +139,26 @@ Acceptance Criteria:
 > **Note:** Timeline assumes ~4 months of co-op term remaining. Milestones are scoped to be achievable with support from AWS (Ari's team) in working sessions.
 
 ### Milestone 0: Foundation (Weeks 1–2)
-- [ ] Get AgentCore access and set up development environment
-- [ ] Complete AgentCore tutorials/getting-started with Ari's team
-- [ ] Deploy a "hello world" agent that responds to basic prompts
-- [ ] Identify which existing Terraform modules to integrate first
+- [x] Get AgentCore access and set up development environment
+- [x] Complete AgentCore tutorials/getting-started with Ari's team
+- [x] Deploy a "hello world" agent that responds to basic prompts
+- [x] Identify which existing Terraform modules to integrate first
 
 **Deliverable:** Working AgentCore agent in a sandbox that can respond to messages.
 
 ### Milestone 1: Single Resource Provisioning (Weeks 3–5)
-- [ ] Agent can provision an S3 bucket using existing Terraform module
-- [ ] Agent enforces naming and tagging standards
-- [ ] Agent targets the correct AWS account (preprod only)
-- [ ] Basic error handling (what if Terraform fails?)
+- [x] Agent can provision an S3 bucket using existing Terraform module
+- [x] Agent enforces naming and tagging standards
+- [x] Agent targets the correct AWS account (preprod only)
+- [x] Basic error handling (what if Terraform fails?)
 
 **Deliverable:** US-1 complete. Demo to team.
 
 ### Milestone 2: Expanded Resource Types (Weeks 6–9)
 - [ ] Add Kubernetes namespace provisioning (US-2)
 - [ ] Add Lambda + API Gateway provisioning (US-3)
-- [ ] Standards validation logic is reusable across resource types (US-4)
-- [ ] Agent handles multi-step conversations ("which account?" → "what tags?" → "confirm?")
+- [x] Standards validation logic is reusable across resource types (US-4)
+- [x] Agent handles multi-step conversations ("which account?" → "what tags?" → "confirm?")
 
 **Deliverable:** US-1 through US-4 complete. Demo to stakeholders.
 
@@ -178,6 +178,22 @@ Acceptance Criteria:
 - [ ] Write up results and recommendations for scaling
 
 **Deliverable:** Pilot results, recommendations for FY27 expansion.
+
+## Current State (July 2026)
+
+The agent is operational in sandbox with:
+- Full Atlantis integration (autoplan + apply via webhooks)
+- CLI with WebSocket streaming, session resume, and MCP (Atlassian/Jira) integration
+- OTEL telemetry exporting to Datadog (per-turn traces, LLM observability)
+- CloudWatch kill switch for cost protection
+- GitHub App handling both outbound operations and inbound webhook delivery
+- Standards enforcement (naming, tagging, accounts) with hot-reload from repo
+- DynamoDB-based session tracking for webhook→agent delivery
+
+Next priorities:
+- Expand resource type support (K8s namespaces, Lambda)
+- Production approval gate (US-5)
+- Teams bot interface (see teams-bot-plan.md)
 
 ## 4. Risks, Assumptions & Dependencies
 
