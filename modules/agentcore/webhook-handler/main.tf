@@ -1,12 +1,13 @@
-# DynamoDB table: maps PR number → AgentCore session ID
+# DynamoDB table: maps repo + PR number → AgentCore session ID
+# Key format: "{owner}/{repo}#{pr_number}" (e.g. "acme/infra#42")
 resource "aws_dynamodb_table" "sessions" {
   name         = "${var.stack_name}-webhook-sessions"
   billing_mode = "PAY_PER_REQUEST"
-  hash_key     = "pr_number"
+  hash_key     = "repo_pr"
 
   attribute {
-    name = "pr_number"
-    type = "N"
+    name = "repo_pr"
+    type = "S"
   }
 
   ttl {
@@ -22,8 +23,8 @@ resource "aws_iam_role" "lambda" {
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
     Statement = [{
-      Action = "sts:AssumeRole"
-      Effect = "Allow"
+      Action    = "sts:AssumeRole"
+      Effect    = "Allow"
       Principal = { Service = "lambda.amazonaws.com" }
     }]
   })
@@ -42,8 +43,8 @@ resource "aws_iam_role_policy" "lambda" {
         Resource = aws_dynamodb_table.sessions.arn
       },
       {
-        Effect   = "Allow"
-        Action   = ["bedrock-agentcore:InvokeAgentRuntime"]
+        Effect = "Allow"
+        Action = ["bedrock-agentcore:InvokeAgentRuntime"]
         Resource = [
           var.agent_runtime_arn,
           "${var.agent_runtime_arn}/*"
@@ -69,20 +70,20 @@ data "aws_secretsmanager_secret" "github_app" {
 
 # Lambda function
 resource "aws_lambda_function" "webhook" {
-  function_name = "${var.stack_name}-webhook-handler"
-  role          = aws_iam_role.lambda.arn
-  handler       = "index.handler"
-  runtime       = "python3.12"
-  timeout       = 30
+  function_name    = "${var.stack_name}-webhook-handler"
+  role             = aws_iam_role.lambda.arn
+  handler          = "index.handler"
+  runtime          = "python3.12"
+  timeout          = 30
   filename         = data.archive_file.lambda.output_path
   source_code_hash = data.archive_file.lambda.output_base64sha256
 
   environment {
     variables = {
-      SESSIONS_TABLE   = aws_dynamodb_table.sessions.name
-      SECRET_NAME      = "arc-ipa/github-app"
+      SESSIONS_TABLE    = aws_dynamodb_table.sessions.name
+      SECRET_NAME       = "arc-ipa/github-app"
       AGENT_RUNTIME_ARN = var.agent_runtime_arn
-      AWS_REGION_NAME  = var.region
+      AWS_REGION_NAME   = var.region
     }
   }
 }

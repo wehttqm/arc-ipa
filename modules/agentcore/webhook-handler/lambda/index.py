@@ -74,8 +74,16 @@ def handler(event, context):
     if not pr_number:
         return {"statusCode": 200, "body": "No PR number"}
 
+    # Extract repo full name (e.g. "acme/infra") for composite key
+    repo_full_name = payload.get("repository", {}).get("full_name")
+    if not repo_full_name:
+        return {"statusCode": 200, "body": "No repository info"}
+
+    # Composite key format: "{owner}/{repo}#{pr_number}"
+    repo_pr_key = f"{repo_full_name}#{pr_number}"
+
     # Look up the session waiting on this PR
-    resp = table.get_item(Key={"pr_number": pr_number})
+    resp = table.get_item(Key={"repo_pr": repo_pr_key})
     item = resp.get("Item")
     if not item:
         return {"statusCode": 200, "body": "No session waiting for this PR"}
@@ -89,6 +97,7 @@ def handler(event, context):
         runtimeSessionId=session_id,
         payload=json.dumps({
             "webhook": {
+                "repo_full_name": repo_full_name,
                 "pr_number": pr_number,
                 "comment_body": comment["body"],
                 "event_type": event_type,
@@ -97,6 +106,6 @@ def handler(event, context):
     )
 
     # Clean up the session record
-    table.delete_item(Key={"pr_number": pr_number})
+    table.delete_item(Key={"repo_pr": repo_pr_key})
 
     return {"statusCode": 200, "body": f"Delivered {event_type} result to session {session_id}"}
