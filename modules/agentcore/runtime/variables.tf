@@ -42,3 +42,21 @@ variable "environment_variables" {
   type    = map(string)
   default = {}
 }
+
+variable "github_credential_provider_name" {
+  type        = string
+  default     = "arc-agent-sandbox-github"
+  description = "Name of the AgentCore OAuth2 credential provider for GitHub"
+}
+
+variable "oauth_callback_url" {
+  type        = string
+  default     = "https://xbqvzz72-3978.usw2.devtunnels.ms/oauth/callback"
+  description = "The OAuth callback URL for the agent's workload identity"
+}
+
+variable "gateway_endpoint" {
+  type        = string
+  default     = "https://arc-agent-sandbox-gateway-i5nkiz9qf8.gateway.bedrock-agentcore.us-west-2.amazonaws.com/mcp"
+  description = "The endpoint for the Arc'teryx Gateway service"
+}

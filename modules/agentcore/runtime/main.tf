@@ -42,6 +42,17 @@ data "terraform_remote_state" "secrets_manager" {
   }
 }
 
+data "terraform_remote_state" "oauth_callback" {
+  backend   = "s3"
+  workspace = terraform.workspace
+  config = {
+    bucket               = "arcteryx-pf-sandbox"
+    key                  = "agentcore/oauth-callback/terraform.tfstate"
+    region               = "us-west-2"
+    workspace_key_prefix = "agentcore"
+  }
+}
+
 resource "aws_bedrockagentcore_agent_runtime" "this" {
   agent_runtime_name = replace("${var.stack_name}_${var.agent_name}", "-", "_")
   description        = var.description
@@ -67,11 +78,13 @@ resource "aws_bedrockagentcore_agent_runtime" "this" {
 
   environment_variables = merge(
     {
-      AWS_REGION         = var.region
-      AWS_DEFAULT_REGION = var.region
-      SESSIONS_TABLE     = data.terraform_remote_state.webhook_handler.outputs.sessions_table_name
-      DD_API_KEY_NAME    = data.terraform_remote_state.secrets_manager.outputs.datadog_terraform_key_secret_name
-      KILL_SWITCH_ALARM  = "${var.stack_name}-input-tokens-daily-limit"
+      AWS_REGION                   = var.region
+      AWS_DEFAULT_REGION           = var.region
+      DD_API_KEY_NAME              = data.terraform_remote_state.secrets_manager.outputs.datadog_terraform_key_secret_name
+      KILL_SWITCH_ALARM            = "${var.stack_name}-input-tokens-daily-limit"
+      GITHUB_CREDENTIAL_PROVIDER   = "${var.github_credential_provider_name}"
+      OAUTH_CALLBACK_URL           = "${var.oauth_callback_url}"
+      GATEWAY_ENDPOINT             = "${var.gateway_endpoint}"
     },
     var.environment_variables
   ) 

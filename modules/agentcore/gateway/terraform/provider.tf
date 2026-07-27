@@ -1,10 +1,8 @@
 terraform {
-  required_version = ">= 1.6"
-
   required_providers {
     aws = {
       source  = "hashicorp/aws"
-      version = "~> 6.21"
+      version = "~> 6.0"
     }
   }
 
@@ -13,8 +11,8 @@ terraform {
     bucket               = "arcteryx-pf-sandbox"
     encrypt              = true
     use_lockfile         = true
-    key                  = "agentcore/webhook-handler/terraform.tfstate"
-    workspace_key_prefix = "agentcore"
+    key                  = "agentcore/gateway/terraform.tfstate"
+    workspace_key_prefix = "terraform-state-backend"
     region               = "us-west-2"
   }
 }

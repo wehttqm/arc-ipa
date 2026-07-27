@@ -129,13 +129,27 @@ resource "aws_iam_role_policy" "agent_execution" {
         ]
       },
       {
+        # Required for outbound 3LO: agent reads per-user OAuth tokens from the
+        # AgentCore Identity Token Vault via @requires_access_token decorator.
+        # Ref: https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/gateway-outbound-auth.html#gateway-outbound-auth-oauth
+        Sid    = "GetResourceOauth2Token"
+        Effect = "Allow"
+        Action = [
+          "bedrock-agentcore:GetResourceOauth2Token"
+        ]
+        Resource = [
+          "arn:aws:bedrock-agentcore:${data.aws_region.current.name}:${data.aws_caller_identity.current.id}:token-vault/*"
+        ]
+      },
+      {
         Sid    = "SecretsManagerAccess"
         Effect = "Allow"
         Action = [
           "secretsmanager:GetSecretValue"
         ]
         Resource = [
-          "arn:aws:secretsmanager:${data.aws_region.current.name}:${data.aws_caller_identity.current.id}:secret:arc-ipa/*"
+          "arn:aws:secretsmanager:${data.aws_region.current.name}:${data.aws_caller_identity.current.id}:secret:arc-ipa/*",
+          "arn:aws:secretsmanager:${data.aws_region.current.name}:${data.aws_caller_identity.current.id}:secret:bedrock-agentcore-identity*",
         ]
       },
       {
