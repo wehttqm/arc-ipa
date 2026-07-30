@@ -1,0 +1,42 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "ConversationHistoryReadWrite",
+      "Effect": "Allow",
+      "Action": [
+        "bedrock-agentcore:CreateEvent",
+        "bedrock-agentcore:GetEvent",
+        "bedrock-agentcore:ListEvents",
+        "bedrock-agentcore:DeleteEvent",
+        "bedrock-agentcore:ListActors",
+        "bedrock-agentcore:ListSessions"
+      ],
+      "Resource": [
+        "${memory_arn}",
+        "${memory_arn}/*"
+      ]
+    },
+    {
+      "Sid": "LongTermMemoryRetrieval",
+      "Effect": "Allow",
+      "Action": [
+        "bedrock-agentcore:RetrieveMemoryRecords",
+        "bedrock-agentcore:GetMemoryRecord",
+        "bedrock-agentcore:ListMemoryRecords"
+      ],
+      "Resource": [
+        "${memory_arn}",
+        "${memory_arn}/*"
+      ]
+    },
+    {
+      "Sid": "DescribeMemory",
+      "Effect": "Allow",
+      "Action": [
+        "bedrock-agentcore:GetMemory"
+      ],
+      "Resource": "${memory_arn}"
+    }
+  ]
+}
