@@ -7,6 +7,15 @@ data "aws_secretsmanager_secret_version" "github_app" {
   secret_id = "arc-ipa/github-app"
 }
 
+# -----------------------------------------------------------------------------
+# Atlassian App secret (contains OAuth client_id + client_secret).
+# Create manually in Secrets Manager as JSON: {"client_id": "...", "client_secret": "..."}
+# -----------------------------------------------------------------------------
+
+data "aws_secretsmanager_secret_version" "atlassian_app" {
+  secret_id = "arc-ipa/atlassian-app"
+}
+
 data "aws_caller_identity" "current" {}
 
 data "terraform_remote_state" "iam" {

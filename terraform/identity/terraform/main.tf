@@ -21,6 +21,47 @@ resource "aws_bedrockagentcore_oauth2_credential_provider" "github" {
 }
 
 # -----------------------------------------------------------------------------
+# Atlassian OAuth2 Credential Provider (per-user 3LO)
+#
+# Uses CustomOAuth vendor with Atlassian's authorization and token endpoints.
+# The user consents once; AgentCore Identity vaults the refresh token and
+# handles rotation. Actions in Jira/Confluence are attributed to the real user.
+#
+# Prerequisites:
+#   1. Create an OAuth 2.0 (3LO) app at https://developer.atlassian.com/console/myapps/
+#   2. Add scopes: read:me, read:jira-user, read:jira-work, write:jira-work,
+#      read:confluence-content.all, offline_access
+#   3. Set callback URL to the bot's OAuth callback
+#   4. Store client_id and client_secret in Secrets Manager at arc-ipa/atlassian-app
+#
+# Ref: https://developer.atlassian.com/cloud/jira/platform/oauth-2-3lo-apps/
+# Ref: https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/identity-getting-started-custom.html
+# -----------------------------------------------------------------------------
+
+resource "aws_bedrockagentcore_oauth2_credential_provider" "atlassian" {
+  name                       = "${local.name_prefix}-atlassian"
+  credential_provider_vendor = "CustomOauth2"
+
+  oauth2_provider_config {
+    custom_oauth2_provider_config {
+      client_id     = local.atlassian_app["client_id"]
+      client_secret = local.atlassian_app["client_secret"]
+
+      oauth_discovery {
+        authorization_server_metadata {
+          issuer                 = "https://auth.atlassian.com"
+          authorization_endpoint = "https://auth.atlassian.com/authorize"
+          token_endpoint         = "https://auth.atlassian.com/oauth/token"
+          response_types         = ["code"]
+        }
+      }
+    }
+  }
+
+  tags = local.common_tags
+}
+
+# -----------------------------------------------------------------------------
 # Workload Identity — session-binding callback for 3LO
 #
 # Registers the bot's OAuth callback URL so AgentCore Identity can redirect the
