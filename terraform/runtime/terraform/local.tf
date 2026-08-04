@@ -10,13 +10,14 @@
 
 locals {
   environment_variables = {
-    AWS_REGION                      = var.region
-    AWS_DEFAULT_REGION              = var.region
-    DD_API_KEY_NAME                 = data.terraform_remote_state.secrets_manager.outputs.datadog_terraform_key_secret_name
-    KILL_SWITCH_ALARM               = data.terraform_remote_state.monitoring.outputs.alarm_name
-    GITHUB_CREDENTIAL_PROVIDER_NAME = data.terraform_remote_state.identity.outputs.github_credential_provider_name
-    OAUTH_CALLBACK_URL              = var.oauth_callback_url
-    GATEWAY_ENDPOINT                = data.terraform_remote_state.gateway.outputs.gateway_url
-    MEMORY_ID                       = data.terraform_remote_state.memory.outputs.memory_id
+    AWS_REGION                         = var.region
+    AWS_DEFAULT_REGION                 = var.region
+    DD_API_KEY_NAME                    = data.terraform_remote_state.secrets_manager.outputs.datadog_terraform_key_secret_name
+    KILL_SWITCH_ALARM                  = data.terraform_remote_state.monitoring.outputs.alarm_name
+    GITHUB_CREDENTIAL_PROVIDER_NAME    = data.terraform_remote_state.identity.outputs.github_credential_provider_name
+    ATLASSIAN_CREDENTIAL_PROVIDER_NAME = data.terraform_remote_state.identity.outputs.atlassian_credential_provider_name
+    OAUTH_CALLBACK_URL                 = var.oauth_callback_url
+    GATEWAY_ENDPOINT                   = data.terraform_remote_state.gateway.outputs.gateway_url
+    MEMORY_ID                          = data.terraform_remote_state.memory.outputs.memory_id
   }
 }
