@@ -89,13 +89,33 @@ resource "aws_bedrockagentcore_gateway" "main" {
 # None are managed here yet. Add targets for services where the agent's own
 # identity is sufficient (Lambda, SigV4 APIs, M2M/API-key services).
 #
-# Do not add OAuth AUTHORIZATION_CODE targets for user-facing services such as
-# GitHub or Atlassian. Those run through AgentCore Identity 3LO in the agent
-# (infra-agent/connectors/), where the consent contract is documented; the
-# gateway signals "user must authorize" with an unspecified JSON-RPC -32042
-# error. If you do add one, the gateway role needs GetResourceOauth2Token and
-# secretsmanager:GetSecretValue back (see git history), and note that a target
-# whose outbound auth cannot resolve can fail the whole gateway's MCP initialize.
+# OAuth AUTHORIZATION_CODE (per-user) targets are now supported by the agent: it
+# handles the JSON-RPC -32042 URL-mode elicitation the gateway returns when the
+# caller has not consented, sends the user the authorization link, and the bot
+# completes session binding with CompleteResourceTokenAuth
+# (infra-agent/capabilities/elicitation.py, teams-bot/src/app.py). Before adding
+# one, four things have to line up:
+#
+#   1. defaultReturnUrl on the target = the bot's ${PUBLIC_BASE_URL}/oauth/callback.
+#   2. That URL registered as an allowed resource OAuth2 return URL on the
+#      workload identity, or the redirect after consent is rejected.
+#   3. This gateway role needs bedrock-agentcore:GetResourceOauth2Token plus
+#      secretsmanager:GetSecretValue on the
+#      bedrock-agentcore-identity!default/oauth2/* prefix. iam-policy.json
+#      currently only covers the API-key path (GetResourceApiKey +
+#      .../apikey/*), which is what outbound API-key targets need.
+#   4. Prefer creating the target with an upfront mcpToolSchema. Without one the
+#      gateway has to authorize before it can even list tools, which turns every
+#      cold start into a consent prompt.
+#
+# Also note a target whose outbound auth cannot resolve can fail the whole
+# gateway's MCP initialize, which costs the agent every gateway tool, not just
+# that target's.
+#
+# GitHub and Atlassian still run through AgentCore Identity 3LO in the agent
+# (infra-agent/capabilities/federation.py). Moving them here is now possible --
+# see infra-agent/docs/IMPROVEMENTS.md §0 -- but it is a migration, not a
+# prerequisite.
 #
 # Ref: https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/gateway-building-adding-targets-authorization.html
 # -----------------------------------------------------------------------------

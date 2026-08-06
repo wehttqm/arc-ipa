@@ -23,6 +23,16 @@
       "Resource": [
         "arn:aws:bedrock-agentcore:${region}:${account_id}:*"
       ]
+    },
+    {
+      "Sid": "ReadIdentityManagedApiKeySecrets",
+      "Effect": "Allow",
+      "Action": [
+        "secretsmanager:GetSecretValue"
+      ],
+      "Resource": [
+        "arn:aws:secretsmanager:${region}:${account_id}:secret:bedrock-agentcore-identity!default/apikey/*"
+      ]
     }
   ]
 }
