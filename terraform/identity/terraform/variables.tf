@@ -14,8 +14,3 @@ variable "workload_identity_name" {
   type        = string
   description = "Name for the agent's workload identity (matches the Runtime-created identity if importing)"
 }
-
-variable "oauth_callback_url" {
-  type        = string
-  description = "Bot's OAuth callback URL for 3LO return redirects (e.g. https://your-bot.azurewebsites.net/oauth/callback)"
-}
